@@ -14,26 +14,78 @@ from system.db import Database
 
 from lxml import etree
 import os
-def validate_xml(xml_file, xsd_file):
+def validate_xml(xml_content, xsd_file):
+    """Valida un file XML rispetto ad uno schema XSD"""
     try:
-        # Carica il file XSD (usa rb per leggere come bytes)
         with open(xsd_file, 'rb') as schema_file:
             schema_root = etree.XML(schema_file.read())
 
         schema = etree.XMLSchema(schema_root)
-
-        # Carica il file XML (usa rb per leggere come bytes)
-        with open(xml_file, 'rb') as xml_file:
-            xml_doc = etree.XML(xml_file.read())
-
-        # Valida XML con XSD
+        xml_doc = etree.fromstring(xml_content.encode('utf-8'))
         schema.assertValid(xml_doc)
         print("Il file XML è valido rispetto allo schema XSD.")
+        return True
     except etree.XMLSyntaxError as e:
-        print(f" Errore di sintassi XML: {e}")
+        logging.error(f"Errore di sintassi XML: {e}")
+        return False
     except etree.DocumentInvalid as e:
-        print(f" Il file XML NON è valido: {e}")
+        logging.error(f"Il file XML NON è valido: {e}")
+        return False
 
+def clean_html_entities(text):
+    """Rimuove le entità HTML da una stringa di testo"""
+    soup = BeautifulSoup(text, "html.parser")
+    return soup.get_text()
+
+def add_newlines_to_otherinfo(text):
+    """Aggiunge newline tra le frasi di un testo, evitando duplicati"""
+    # Split tra i punti che non sono parte di numeri o IP
+    sentences = re.split(r'(?<!\d)\.(?!\d)', text)
+    sentences = [sentence.strip() for sentence in sentences if sentence.strip()]  # Rimuovi spazi extra
+
+    seen_phrases = set()
+    unique_sentences = []
+
+    for sentence in sentences:
+        if sentence not in seen_phrases:
+            seen_phrases.add(sentence)
+            unique_sentences.append(sentence)
+
+    # Aggiungi un punto a ciascuna frase, ma solo se non è già presente alla fine
+    for i in range(len(unique_sentences)):
+        if not unique_sentences[i].endswith('.'):
+            unique_sentences[i] += '.'
+
+    # Unisci le frasi con '\n'
+    result = '\n'.join(unique_sentences)
+
+    # Rimuovi il punto finale extra se presente
+    if result.endswith('.'):
+        result = result[:-1]
+
+    return result
+def confidence_toText(confidence):
+    if confidence == "0":
+        return "Info"
+    elif confidence == "1":
+        return "Low"
+    elif confidence == "2":
+        return "Medium"
+    elif confidence == "3":
+        return "High"
+    else:
+        return confidence
+def technical_description(site_name, host, port, ssl, language, otherInfo):
+    """Genera una descrizione tecnica basata su vari parametri"""
+    technical_parts = []
+    if site_name: technical_parts.append(f"Site: {site_name}")
+    if host: technical_parts.append(f"Host: {host}")
+    if port: technical_parts.append(f"Port: {port}")
+    if ssl: technical_parts.append(f"SSL: {ssl}")
+    if language: technical_parts.append(f"Language: {language}")
+    if otherInfo: technical_parts.append(f"OtherInfo: {otherInfo}")
+
+    return "\n".join(technical_parts)
 
 # Route name and tools description
 route_name = "reducer"
@@ -72,64 +124,133 @@ def process_request(
         global_config: object  # dict with keys - setting.ini file data
 ) -> str:  # returns error text or "" (if finished successfully)
 
-    # fields variables
-    print("Current directory:", os.getcwd())
-    xml_files = input_dict["xml_files"]
-    xsd_file = "/routes/ui/tools_addons/import_plugins/reducer/new.xsd"
+    xml_files = input_dict.get("xml_files", [])
+    if not xml_files:
+        return "Nessun file XML ricevuto!"
+    
+    xsd_file = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/new.xsd")
     for bin_data in xml_files:
         try:
-            if bin_data:
-                print("ls")
-                xml_data = bin_data.decode("charmap") 
-                '''
-                if not validate_xml(xml_data, xsd_file):
-                    return "XML validation failed!"
-                '''
-                scan_result = BeautifulSoup(xml_data, "html.parser")
-                query_list = scan_result.find_all("query")
-                for query in query_list:
-                    vulnerability_name = re.sub(' Version:[0-9]+', '', query.attrs['querypath'].split('\\')[-1])
-                    language = query.attrs['language']
-                    cwe = query.attrs['cweid']
-                    vuln_array = query.find_all("result")
-                    for vuln_example in vuln_array:
-                        criticality = vuln_example.attrs['severity']  # High
-                        filename = vuln_example.attrs['filename']
-                        path_find = vuln_example.find_all("path")
-                        paths_str_arrays = []
-                        for path_obj in path_find:
-                            paths_str = ''
-                            path_nodes = vuln_example.find_all("pathnode")
-                            if path_nodes:
-                                paths_str = '########## Path {} ###########\n'.format(path_find.index(path_obj) + 1)
-                            for path_node in path_nodes:
-                                filename = path_node.find_all("filename")[0].text
-                                line_num = int(path_node.find_all("line")[0].text)
-                                colum_num = int(path_node.find_all("column")[0].text)
-                                code_arr = path_node.find_all("code")
-                                node_str = 'Filename: {}\nLine: {} Column: {}'.format(filename, line_num, colum_num)
-                                for code in code_arr:
-                                    node_str += '\n' + code.text.strip(' \t')
-                                paths_str += node_str + '\n\n'
+            if not bin_data:
+                continue  # Evita file vuoti
 
-                            if paths_str:
-                                paths_str_arrays.append(paths_str + '\n\n')
-                        all_paths_str = '\n'.join(paths_str_arrays)
+            # Decodifica con UTF-8
+            xml_data = bin_data.decode("utf-8")
+            print("📂 File XML ricevuto!")
+            # Valida XML rispetto allo schema XSD (attivare se necessario)
+            if not validate_xml(xml_data, xsd_file):
+                return "XML validation failed!"
 
-                        if criticality == 'High':
-                            cvss = 9.5
-                        elif criticality == 'Medium':
-                            cvss = 8.0
-                        elif criticality == 'Low':
-                            cvss = 2.0
-                        else:
-                            cvss = 0
-                        issue_id = db.insert_new_issue(vulnerability_name,
-                                                       'Language: {}\n'.format(language) + all_paths_str, filename,
-                                                       cvss, current_user['id'],
-                                                       {}, 'need to check', current_project['id'], cwe=cwe,
-                                                       issue_type='custom')
+            # Analizza l'XML con BeautifulSoup
+            soup = BeautifulSoup(xml_data, "xml")
+
+            # Estrai dati del sito
+            site = soup.find("site")
+            if not site:
+                print("Nessun <site> trovato nell'XML!")
+                continue
+            
+            site_name = site.get("name", "Unknown")
+            host = site.get("host", "Unknown")
+            port = site.get("port", "Unknown")
+            ssl = site.get("ssl", "Unknown")
+
+            #print(f"🌐 Sito: {site_name} | 🏠 Host: {host} | 🔌 Porta: {port} | 🔒 SSL: {ssl}")
+            #print("-" * 40)
+            '''-----------------------------------------------------------------'''
+
+            # Analizza gli alert di vulnerabilità
+            alert_items = soup.find_all("alertitem")
+
+            if not alert_items:
+                print("Nessun alert trovato.")
+                continue
+
+            # All'interno del ciclo per ogni alert
+            for alert in alert_items:
+                vulnerability_name = alert.find("name").text.strip()
+                cvss=int(alert.find("riskcode").text.strip())
+                
+                #print(f"Vulnerabilità: {vulnerability_name if vulnerability_name else 'N/A'} | CVSS: {cvss if cvss else 'N/A'} | Confidence: {confidence if confidence else 'N/A'}")
+                
+                # Estrai tutte le istanze della vulnerabilità
+                instances = alert.find_all("instance")
+                all_paths = []
+
+                if instances:
+                    for instance in instances:
+                        uri = instance.find("uri").text.strip()
+                        method = instance.find("method").text.strip()
+                        evidence = instance.find("evidence").text.strip()
+                        all_paths.append(f"{method} {uri} - Evidenza: {evidence}")
+
+
+                all_paths_str = "\n".join(all_paths) if all_paths else "Nessuna evidenza trovata"
+                '''-----------------------------------------------------------------'''
+                '''Valori per il DB'''
+                report = soup.find("OWASPZAPReport")
+                filename = report.get("programName", "zap_scan.xml")
+                language = report.get("language", "Unknown")
+                cwe = alert.find("cweid").text.strip()
+                desc= clean_html_entities(alert.find("desc").text.strip())
+                solution= clean_html_entities(alert.find("solution").text.strip())
+                references= clean_html_entities(alert.find("reference").text.strip())
+
+                confidence_complete=clean_html_entities(alert.find("confidence").text.strip())
+                confidence = int(confidence_complete) if alert.find("confidence") else alert.find("confidencedesc").text.strip() if alert.find("confidencedesc") else 0
+                
+                otherInfo_items = alert.find_all("otherinfo")
+
+                # Crea una lista di testi, aggiungendo il newline dopo ogni frase
+                seen_phrases = set()
+                # Crea una lista di testi, aggiungendo il newline dopo ogni frase, senza bisogno di controllare duplicati
+                otherInfo_cleaned = [
+                    add_newlines_to_otherinfo(otherInfo.get_text(strip=True))
+                    for otherInfo in otherInfo_items
+                    if (otherInfo_text := otherInfo.get_text(strip=True)) and otherInfo_text not in seen_phrases and not seen_phrases.add(otherInfo_text)#utilizzando set per evitare duplicati
+                ]
+                # Unisci il testo dei <otherinfo> separato da \n
+                otherInfo_complete = '\n'.join(otherInfo_cleaned)
+                otherInfo = clean_html_entities(otherInfo_complete)
+
+                technical=technical_description(site_name, host, port, ssl, language, otherInfo)
+                
+                '''-----------------------------------------------------------------'''
+                # Verifica che current_user e current_project abbiano gli ID validi
+                user_id = current_user.get('id')
+                project_id = current_project.get('id')
+
+                if not user_id or not project_id:
+                    print("Errore: ID utente o progetto non valido!")
+                    continue
+                # Salvataggio issue nel db
+                issue_id = db.insert_new_issue(
+                    vulnerability_name,
+                    f"{desc}\n"+ "",
+                    filename,
+                    cvss,
+                    user_id,
+                    {},
+                    'need to check',
+                    project_id,
+                    cwe=cwe,
+                    issue_type='custom',
+                    fix=solution,
+                    technical=technical,
+                    risks=confidence_toText(confidence),
+                    references=references
+                    )
+                '''
+                self, name, description, url_path, cvss, user_id,
+                         services, status, project_id, cve='', cwe=0,
+                         issue_type='custom', fix='', param='', fields={},
+                         technical='', risks='', references='', intruder=''):
+                '''
+                print(f"📌 Salvato nel DB con issue_id: {issue_id}")
+                print("-" * 40)
+
         except Exception as e:
-            logging.error("Exception during file import: {}".format(e))
-            return "One of files was corrupted!"
+            logging.error(f"Errore durante l'importazione del file: {e}", exc_info=True)
+            return "Uno dei file è corrotto!"
+
     return ""
