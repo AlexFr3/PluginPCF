@@ -14,6 +14,8 @@ from system.db import Database
 
 from lxml import etree
 import os
+import dns.resolver
+
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -31,16 +33,14 @@ def validate_xml(xml_content, xsd_file):
     except etree.DocumentInvalid as e:
         logging.error(f"Il file XML NON è valido: {e}")
         return False
-
 def clean_html_entities(text):
     """Rimuove le entità HTML da una stringa di testo"""
     soup = BeautifulSoup(text, "html.parser")
     return soup.get_text()
-
-def add_newlines_to_otherinfo(text):
+def split_sentences_safely(text):
     """Aggiunge newline tra le frasi di un testo, evitando duplicati"""
     # Split tra i punti che non sono parte di numeri o IP
-    sentences = re.split(r'(?<!\d)\.(?!\d)', text)
+    sentences = re.split(r'(?<!\d)\.(?!\d|\(|\))', text)
     sentences = [sentence.strip() for sentence in sentences if sentence.strip()]  # Rimuovi spazi extra
 
     seen_phrases = set()
@@ -86,10 +86,46 @@ def technical_description(site_name, host, port, ssl, language, otherInfo):
     if otherInfo: technical_parts.append(f"OtherInfo: {otherInfo}")
 
     return "\n".join(technical_parts)
+def resolve_dns(domain):
+    # Se l'host è un oggetto IPv4Address, restituisci direttamente l'indirizzo
+    if isinstance(domain, ipaddress.IPv4Address):
+        return str(domain)
+    
+    try:
+        result = dns.resolver.resolve(domain, 'A')  # 'A' per indirizzo IPv4
+        for ipval in result:
+            return ipval.to_text()
+    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN) as e:
+        logging.error(f"Errore nella risoluzione del dominio {domain}: {e}")
+        return None
+def get_ip_address(host):
+    if not host:
+        logging.error("Host è None o vuoto.")
+        return None
+    
+    # Controlla se l'host è "localhost"
+    if host== "localhost":
+        return ipaddress.ip_address("127.0.0.1")  # Restituisce l'IP per localhost
+
+    ip = resolve_dns(host)
+    if ip is None:
+        logging.error(f"Impossibile risolvere l'IP per il dominio {host}")
+        return None
+
+    try:
+        return ipaddress.ip_address(ip)
+    except ValueError:
+        logging.error(f"IP non valido: {ip}")
+        return None
+
+def debugMsg(text):
+    print("---------------------------------------")
+    print("{text}")
+    print("---------------------------------------")
+
 
 # Route name and tools description
 route_name = "reducer"
-
 tools_description = [
     {
         "Icon file": "icon.png",
@@ -128,7 +164,7 @@ def process_request(
     if not xml_files:
         return "Nessun file XML ricevuto!"
     
-    xsd_file = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/new.xsd")
+    xsd_file = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
     for bin_data in xml_files:
         try:
             if not bin_data:
@@ -155,13 +191,76 @@ def process_request(
             port = site.get("port", "Unknown")
             ssl = site.get("ssl", "Unknown")
 
-            #print(f"🌐 Sito: {site_name} | 🏠 Host: {host} | 🔌 Porta: {port} | 🔒 SSL: {ssl}")
-            #print("-" * 40)
             '''-----------------------------------------------------------------'''
+            ip_obj = get_ip_address(host)
+            print(f"📌 IP: {ip_obj}")
+            try:
+                print("--------------------------------------------------------")
+                print(f"📌 current_project:{current_project['id']}")
+                current_host = db.select_project_host_by_ip(current_project['id'], str(ip_obj))
+                print("--------------------------------------------------------")
+                if current_host:
+                    print("IF current host trovato")
+                    current_host = current_host[0]
+                    host_id = current_host['id']
+                    print("current host trovato")
+                elif not current_host:
+                    # Host non trovato, lo inseriamo
+                    print("Inserisco l'host")
+                    host_id = db.insert_host(current_project['id'], 
+                                             str(ip_obj), 
+                                             current_user['id'], 
+                                             "Host aggiunto dall'analisi XML di ZAP")
+                    print(f"📌 Host inserito con ID: {host_id}")
+                        
+                    print("Seleziono l'host appena inserito")
+                    current_host = db.select_host(host_id)
+                    if current_host:
+                        print("✅Host confermato nel DB")
+                    elif not current_host:
+                        logging.error(f"❌ ERRORE: Host con ID {host_id} non trovato!")
+                        return f"Errore: Host non trovato dopo l'inserimento."
 
+            except Exception as e:
+                logging.error(f"🚨 Errore nella selezione dell'host: {str(e)}")
+                return f"Errore nel recupero dell'host: {str(e)}"
+
+            # Gestione porta
+            try:
+                port = int(site.get("port", "0"))
+            except ValueError:
+                logging.error(f"Porta non valida: {site.get('port')}")
+                return f"Porta non valida: {site.get('port')}"
+
+            # Aggiungi logica per determinare TCP o UDP se applicabile
+            is_tcp = True  # Impostazione di default
+            if port != 0:
+                is_tcp = True  # o verifica se è TCP/UDP se il dato è disponibile
+
+            # Verifica se la porta esiste nel DB
+            print("Verifica se la porta esiste nel DB")
+            print("-----------------------------------------------------------------")
+            print(f"current_host: {current_host} (type: {type(current_host)})")
+            print("-----------------------------------------------------------------")
+            if not db.select_host_port(str(ip_obj), port, 1 if is_tcp else 0):
+                ######se porta non esiste, inseriscila
+                print("Inserisco la porta, current_user['id']: " + str(current_user['id']))
+                db.insert_host_port(
+                    str(ip_obj), 
+                    port, 1 if is_tcp else 0, 
+                    "input_dict[]", 
+                    "Porta rilevata dall'analisi XML di ZAP", 
+                    str(current_user['id']), 
+                    str(current_project['id'])
+                )
+                print("Porta inserita con successo")
+            ############################
+            '''La porta non viene visualizzata in pcf, solo nel db'''
+            ############################
+            print("Porta non inserita, esiste già: " + str(db.select_host_port(str(ip_obj), port, 1 if is_tcp else 0)))
+            print(db.check_port_in_project(current_project['id'], port))
             # Analizza gli alert di vulnerabilità
             alert_items = soup.find_all("alertitem")
-
             if not alert_items:
                 print("Nessun alert trovato.")
                 continue
@@ -172,7 +271,9 @@ def process_request(
                 cvss=int(alert.find("riskcode").text.strip())
                 
                 #print(f"Vulnerabilità: {vulnerability_name if vulnerability_name else 'N/A'} | CVSS: {cvss if cvss else 'N/A'} | Confidence: {confidence if confidence else 'N/A'}")
-                
+                #Validazione dell'IP
+               
+
                 # Estrai tutte le istanze della vulnerabilità
                 instances = alert.find_all("instance")
                 all_paths = []
@@ -190,7 +291,7 @@ def process_request(
                 '''Valori per il DB'''
                 report = soup.find("OWASPZAPReport")
                 filename = report.get("programName", "zap_scan.xml")
-                language = report.get("language", "Unknown")
+                language = report.get("language", "")
                 cwe = alert.find("cweid").text.strip()
                 desc= clean_html_entities(alert.find("desc").text.strip())
                 solution= clean_html_entities(alert.find("solution").text.strip())
@@ -205,7 +306,7 @@ def process_request(
                 seen_phrases = set()
                 # Crea una lista di testi, aggiungendo il newline dopo ogni frase, senza bisogno di controllare duplicati
                 otherInfo_cleaned = [
-                    add_newlines_to_otherinfo(otherInfo.get_text(strip=True))
+                    split_sentences_safely(otherInfo.get_text(strip=True))
                     for otherInfo in otherInfo_items
                     if (otherInfo_text := otherInfo.get_text(strip=True)) and otherInfo_text not in seen_phrases and not seen_phrases.add(otherInfo_text)#utilizzando set per evitare duplicati
                 ]
