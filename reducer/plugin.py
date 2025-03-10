@@ -75,7 +75,6 @@ def confidence_toText(confidence):
         return "High"
     else:
         return confidence
-def technical_description(site_name, host, port, ssl, language, otherInfo):
     """Genera una descrizione tecnica basata su vari parametri"""
     technical_parts = []
     if site_name: technical_parts.append(f"Site: {site_name}")
@@ -117,7 +116,17 @@ def get_ip_address(host):
     except ValueError:
         logging.error(f"IP non valido: {ip}")
         return None
+def technical_description(site_name, host, port, ssl, language, otherInfo):
+    """Genera una descrizione tecnica basata su vari parametri"""
+    technical_parts = []
+    if site_name: technical_parts.append(f"Site: {site_name}")
+    if host: technical_parts.append(f"Host: {host}")
+    if port: technical_parts.append(f"Port: {port}")
+    if ssl: technical_parts.append(f"SSL: {ssl}")
+    if language: technical_parts.append(f"Language: {language}")
+    if otherInfo: technical_parts.append(f"OtherInfo: {otherInfo}")
 
+    return "\n".join(technical_parts)
 def debugMsg(text):
     print("---------------------------------------")
     print("{text}")
@@ -148,7 +157,35 @@ class ToolArguments(FlaskForm):
         validators=[],
         _meta={"display_row": 1, "display_column": 1, "file_extensions": ".xml"}
     )
-
+    hostnames_file = StringField(
+            label='hostnames_file',
+            description='or take IPs from this field',
+            default='127.0.0.1     vulnsite1.com,vulnsite2.com,subdomain.vulnsite2.com\n',
+            validators=[],
+            _meta={"display_row": 3, "display_column": 1, "multiline": True}
+        )
+    
+    auto_resolve = BooleanField(label='auto_resolve',
+                                description="Automatic resolve ip from PCF server",
+                                default=True,
+                                validators=[],
+                                _meta={"display_row": 2, "display_column": 1})
+    
+    hosts_description = StringField(
+            label='hosts_description',
+            description='Host description',
+            default='Added from Reducer',
+            validators=[],
+            _meta={"display_row": 1, "display_column": 2, "multiline": False}
+        )
+    
+    hostnames_description = StringField(
+        label='hostnames_description',
+        description='Hostname description',
+        default='Added from Reducer',
+        validators=[],
+        _meta={"display_row": 3, "display_column": 2, "multiline": False}
+    )
 
 ########### Request processing
 
@@ -197,33 +234,44 @@ def process_request(
             try:
                 print("--------------------------------------------------------")
                 print(f"📌 current_project:{current_project['id']}")
-                current_host = db.select_project_host_by_ip(current_project['id'], str(ip_obj))
-                print("--------------------------------------------------------")
-                if current_host:
-                    print("IF current host trovato")
+                current_host = db.select_project_host_by_ip(current_project['id'], str(get_ip_address(ip_obj)))
+
+                if current_host:  # Verifica che non sia una lista vuota
                     current_host = current_host[0]
                     host_id = current_host['id']
-                    print("current host trovato")
-                elif not current_host:
-                    # Host non trovato, lo inseriamo
-                    print("Inserisco l'host")
+                    print(f"📌 Host trovato: {host_id}")
+                else:
+                    print("❌ Nessun host trovato, lo inserisco nel DB")
                     host_id = db.insert_host(current_project['id'], 
-                                             str(ip_obj), 
+                                             str(get_ip_address(ip_obj)), 
                                              current_user['id'], 
                                              "Host aggiunto dall'analisi XML di ZAP")
-                    print(f"📌 Host inserito con ID: {host_id}")
-                        
-                    print("Seleziono l'host appena inserito")
+                    
+                    # Dopo l'inserimento, seleziona di nuovo l'host
                     current_host = db.select_host(host_id)
+                    
                     if current_host:
-                        print("✅Host confermato nel DB")
-                    elif not current_host:
+                        print("✅ Host confermato nel DB")
+                    else:
                         logging.error(f"❌ ERRORE: Host con ID {host_id} non trovato!")
                         return f"Errore: Host non trovato dopo l'inserimento."
+
 
             except Exception as e:
                 logging.error(f"🚨 Errore nella selezione dell'host: {str(e)}")
                 return f"Errore nel recupero dell'host: {str(e)}"
+            '''-----------------------------------------------------------------''' 
+            # gestione hostname
+            hostname_id = db.select_ip_hostname(host_id, host)
+            print("-" * 40)
+            if not hostname_id:
+                print("Hostname non trovato, lo inserisco nel DB......")
+                # Usa get per evitare KeyError
+                hosts_description = input_dict.get("hosts_description", "Added from Reducer")
+                hostname_id = db.insert_hostname(host_id, host, hosts_description, current_user['id'])
+            else:
+                print(f"Hostname trovato: {hostname_id[0]['id']}")
+                hostname_id = hostname_id[0]['id']
 
             # Gestione porta
             try:
@@ -245,9 +293,13 @@ def process_request(
             if not db.select_host_port(str(ip_obj), port, 1 if is_tcp else 0):
                 ######se porta non esiste, inseriscila
                 print("Inserisco la porta, current_user['id']: " + str(current_user['id']))
+                print("Inserisco la porta, port: " + str(port))
+                print("Inserisco la porta, is_tcp: " + str(is_tcp))
+                print("Inserisco la porta, "+ str(current_project['id']))
+                print("Inserisco la porta, "+ str(ip_obj))
                 db.insert_host_port(
                     str(ip_obj), 
-                    port, 1 if is_tcp else 0, 
+                    port, 1, 
                     "input_dict[]", 
                     "Porta rilevata dall'analisi XML di ZAP", 
                     str(current_user['id']), 
