@@ -15,7 +15,7 @@ from system.db import Database
 from lxml import etree
 import os
 import dns.resolver
-
+ 
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -160,7 +160,7 @@ class ToolArguments(FlaskForm):
     hostnames_file = StringField(
             label='hostnames_file',
             description='or take IPs from this field',
-            default='127.0.0.1     vulnsite1.com,vulnsite2.com,subdomain.vulnsite2.com\n',
+            default='127.0.0.1\n',
             validators=[],
             _meta={"display_row": 3, "display_column": 1, "multiline": True}
         )
@@ -228,34 +228,45 @@ def process_request(
             port = site.get("port", "Unknown")
             ssl = site.get("ssl", "Unknown")
 
-            '''-----------------------------------------------------------------'''
+            '''-----------------------------------------------------------------''' 
             ip_obj = get_ip_address(host)
+
             print(f"📌 IP: {ip_obj}")
             try:
                 print("--------------------------------------------------------")
                 print(f"📌 current_project:{current_project['id']}")
-                current_host = db.select_project_host_by_ip(current_project['id'], str(get_ip_address(ip_obj)))
-
-                if current_host:  # Verifica che non sia una lista vuota
+                
+                # 1. CERCA HOST PER IP NEL PROGETTO CORRENTE
+                current_host = db.select_project_host_by_ip(
+                    project_id=current_project['id'],
+                    ip=str(ip_obj)  # Cerca per IP nel progetto specifico
+                )
+                
+                if current_host:  # Host già esistente
                     current_host = current_host[0]
                     host_id = current_host['id']
                     print(f"📌 Host trovato: {host_id}")
-                else:
+                else:  # Host non trovato, creazione nuovo
                     print("❌ Nessun host trovato, lo inserisco nel DB")
-                    host_id = db.insert_host(current_project['id'], 
-                                             str(get_ip_address(ip_obj)), 
-                                             current_user['id'], 
-                                             "Host aggiunto dall'analisi XML di ZAP")
                     
-                    # Dopo l'inserimento, seleziona di nuovo l'host
-                    current_host = db.select_host(host_id)
+                    # 2. INSERIMENTO HOST CORRETTO (con parametri nell'ordine giusto)
+                    host_id = db.insert_host(
+                        project_id=current_project['id'], 
+                        ip=str(ip_obj), 
+                        user_id=current_user['id'],
+                        comment=input_dict.get("hosts_description", "Added from Reducer"),
+                        threats=[],  # Campo obbligatorio dalla struttura DB
+                        os=''        # Campo obbligatorio dalla struttura DB
+                    )
+                    
+                    # 3. VERIFICA INSERIMENTO CON SELECT_HOST (per host_id)
+                    current_host = db.select_host(host_id)  # Metodo CORRETTO
                     
                     if current_host:
                         print("✅ Host confermato nel DB")
                     else:
                         logging.error(f"❌ ERRORE: Host con ID {host_id} non trovato!")
                         return f"Errore: Host non trovato dopo l'inserimento."
-
 
             except Exception as e:
                 logging.error(f"🚨 Errore nella selezione dell'host: {str(e)}")
@@ -286,17 +297,13 @@ def process_request(
                 is_tcp = True  # o verifica se è TCP/UDP se il dato è disponibile
 
             # Verifica se la porta esiste nel DB
-            print("Verifica se la porta esiste nel DB")
-            print("-----------------------------------------------------------------")
-            print(f"current_host: {current_host} (type: {type(current_host)})")
-            print("-----------------------------------------------------------------")
-            if not db.select_host_port(str(ip_obj), port, 1 if is_tcp else 0):
-                ######se porta non esiste, inseriscila
-                print("Inserisco la porta, current_user['id']: " + str(current_user['id']))
-                print("Inserisco la porta, port: " + str(port))
-                print("Inserisco la porta, is_tcp: " + str(is_tcp))
-                print("Inserisco la porta, "+ str(current_project['id']))
-                print("Inserisco la porta, "+ str(ip_obj))
+           
+            print(f"host_id: {host_id}, port: {port}, is_tcp: {is_tcp}")
+            existing_port = db.select_host_port(host_id, port, is_tcp)
+            print("existing port: " + str(existing_port))
+            if not existing_port:
+            #if False:    
+                print("sono nell'ifffffffffffffffffffff")
                 db.insert_host_port(
                     str(ip_obj), 
                     port, 1, 
@@ -305,11 +312,13 @@ def process_request(
                     str(current_user['id']), 
                     str(current_project['id'])
                 )
-                print("Porta inserita con successo")
             ############################
             '''La porta non viene visualizzata in pcf, solo nel db'''
             ############################
-            print("Porta non inserita, esiste già: " + str(db.select_host_port(str(ip_obj), port, 1 if is_tcp else 0)))
+            print(f"host_id: {host_id}, port: {port}, is_tcp: {is_tcp}")
+            existing_port = db.select_host_port(host_id, port, is_tcp)
+            
+            print("existing port 2: " + str(existing_port))
             print(db.check_port_in_project(current_project['id'], port))
             # Analizza gli alert di vulnerabilità
             alert_items = soup.find_all("alertitem")
