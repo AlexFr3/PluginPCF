@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ET
 import ipaddress
 import logging
 from io import BytesIO
-import re
+import re 
 import csv
 from io import StringIO
 
@@ -87,16 +87,6 @@ def confidence_toText(confidence):
         return "High"
     else:
         return confidence
-    """Genera una descrizione tecnica basata su vari parametri"""
-    technical_parts = []
-    if site_name: technical_parts.append(f"Site: {site_name}")
-    if host: technical_parts.append(f"Host: {host}")
-    if port: technical_parts.append(f"Port: {port}")
-    if ssl: technical_parts.append(f"SSL: {ssl}")
-    if language: technical_parts.append(f"Language: {language}")
-    if otherInfo: technical_parts.append(f"OtherInfo: {otherInfo}")
-
-    return "\n".join(technical_parts)
 def resolve_dns(domain):
     # Se l'host è un oggetto IPv4Address, restituisci direttamente l'indirizzo
     if isinstance(domain, ipaddress.IPv4Address):
@@ -408,6 +398,7 @@ def process_request(
                 
                 services = create_services_dict(port_id, hostname_id)
                 print(services)
+                print(vulnerability_name)
                 issue_id = db.insert_new_issue_no_dublicate(
                     vulnerability_name,
                     f"{desc}\n"+ "",
