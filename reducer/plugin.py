@@ -15,6 +15,54 @@ from system.db import Database
 from lxml import etree
 import os
 import socket
+from IPy import IP
+
+# Aggiungi queste importazioni in cima al file
+import ipaddress
+import socket
+class Config:
+    # Paths
+    XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
+    
+def safe_resolve(host: str) -> list:
+    """Risoluzione DNS"""
+    try:
+        try:
+            ipaddress.ip_address(host)
+            return [host]
+        except ValueError:
+            pass  # Prosegui con DNS solo se non è un IP valido
+
+        # Risoluzione DNS affidabile
+        addrinfo = socket.getaddrinfo(
+            host, 
+            None, 
+            family=socket.AF_UNSPEC,
+            type=socket.SOCK_STREAM,
+            flags=socket.AI_ADDRCONFIG
+        )
+        
+        # Filtraggio e ordinamento risultati
+        ips = []
+        for res in addrinfo:
+            ip = res[4][0]
+            # Filtra indirizzi non validi
+            try:
+                ipaddress.ip_address(ip)
+                ips.append(ip)
+            except ValueError:
+                continue
+
+        # Rimuovi duplicati mantenendo l'ordine
+        seen = set()
+        return [ip for ip in ips if not (ip in seen or seen.add(ip))]
+
+    except socket.gaierror as e:
+        logging.error(f"DNS error [{host}]: {e}")
+        return []
+    except Exception as e:
+        logging.error(f"Critical error resolving {host}: {e}", exc_info=True)
+        return []
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -146,9 +194,8 @@ def create_services_dict(pcf_port_id, pcf_hostname_id):
     """
     # Costruisce il dizionario invece di una stringa formattata
     inner_value = ["0", str(pcf_hostname_id)]  # La lista invece della stringa
-    return { pcf_port_id: inner_value }
+    return { pcf_port_id: inner_value }# Route name and tools description
 
-# Route name and tools description
 route_name = "reducer"
 tools_description = [
     {
@@ -217,7 +264,7 @@ def process_request(
     if not xml_files:
         return "Nessun file XML ricevuto!"
     
-    xsd_file = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
+    xsd_file = os.path.join(os.getcwd(), Config.XSD_PATH)
     for bin_data in xml_files:
         try:
             if not bin_data:
@@ -232,7 +279,20 @@ def process_request(
             
             # Estraggo i dati XML con BeautifulSoup e ElementTree
             soup, site, site_name, host, port, ssl = getDataSoup(xml_data)
-            ip_obj = socket.gethostbyname(host)
+            ip_obj = None
+            if input_dict['auto_resolve']:
+                resolved_ips = safe_resolve(host)
+                
+                if not resolved_ips:
+                    error_msg = f"Impossibile risolvere l'host: {host}"
+                    logging.error(error_msg)
+                    return error_msg
+                
+                # Prendi il primo IP valido (puoi implementare logiche più complesse se necessario)
+                ip_obj = resolved_ips[0]
+                logging.info(f"Host '{host}' risolto in IP: {ip_obj}")
+                
+            #ip_obj = socket.gethostbyname(host)
             print(f"IP: {ip_obj}")
             
             try:
@@ -283,9 +343,8 @@ def process_request(
                 port = int(site.get("port", "0"))
             except ValueError:
                 logging.error(f"Porta non valida: {site.get('port')}")
-                return f"Porta non valida: {site.get('port')}"
+                continue
             ###################
-            #Aggiungere controlli per determinare se tcp o no
             is_tcp = True  # Impostazione di default
             if port != 0:
                 is_tcp = True  
@@ -382,7 +441,7 @@ def process_request(
                 issue_id = db.insert_new_issue_no_dublicate(
                     f"{vulnerability_name} - {filename} Imported",
                     desc,
-                    url_path="",
+                    url_path="",#chiedere se va bene
                     cvss=0,
                     user_id=user_id,
                     services=services,
@@ -410,18 +469,3 @@ def process_request(
             return "Uno dei file è corrotto!"
 
     return ""
-'''
-{
-  "issues": [
-    {
-      "name": "SSRF",
-      "fields": {
-        "nessus_id": {
-          "type": "number",
-          "val": 1337
-        }
-      }
-    }
-  ]
-}
-'''
