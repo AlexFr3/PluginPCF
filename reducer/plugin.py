@@ -15,54 +15,10 @@ from system.db import Database
 from lxml import etree
 import os
 import socket
-from IPy import IP
 
-# Aggiungi queste importazioni in cima al file
-import ipaddress
-import socket
 class Config:
-    # Paths
     XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
-    
-def safe_resolve(host: str) -> list:
-    """Risoluzione DNS"""
-    try:
-        try:
-            ipaddress.ip_address(host)
-            return [host]
-        except ValueError:
-            pass  # Prosegui con DNS solo se non è un IP valido
-
-        # Risoluzione DNS affidabile
-        addrinfo = socket.getaddrinfo(
-            host, 
-            None, 
-            family=socket.AF_UNSPEC,
-            type=socket.SOCK_STREAM,
-            flags=socket.AI_ADDRCONFIG
-        )
-        
-        # Filtraggio e ordinamento risultati
-        ips = []
-        for res in addrinfo:
-            ip = res[4][0]
-            # Filtra indirizzi non validi
-            try:
-                ipaddress.ip_address(ip)
-                ips.append(ip)
-            except ValueError:
-                continue
-
-        # Rimuovi duplicati mantenendo l'ordine
-        seen = set()
-        return [ip for ip in ips if not (ip in seen or seen.add(ip))]
-
-    except socket.gaierror as e:
-        logging.error(f"DNS error [{host}]: {e}")
-        return []
-    except Exception as e:
-        logging.error(f"Critical error resolving {host}: {e}", exc_info=True)
-        return []
+ 
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -143,7 +99,6 @@ def confidenceRisk_toText(risk,confidence):
         
     risk_str=f"Risk: {risk}\n Confidence: {confidence}"
     return risk_str
-
 def get_otherInfo(alert):
     otherInfo_items = alert.find_all("otherinfo")
 
@@ -175,7 +130,7 @@ def technical_description(site_name, host, port, ssl, language, otherInfo):
     return "\n".join(technical_parts)
 def verify_host(host_id,db):
     """Verifica che l'host sia presente nel db"""
-    current_host = db.select_host(host_id)  # Metodo CORRETTO
+    current_host = db.select_host(host_id)  
     if current_host:
         print("Host confermato nel DB")
     else:
@@ -194,8 +149,9 @@ def create_services_dict(pcf_port_id, pcf_hostname_id):
     """
     # Costruisce il dizionario invece di una stringa formattata
     inner_value = ["0", str(pcf_hostname_id)]  # La lista invece della stringa
-    return { pcf_port_id: inner_value }# Route name and tools description
+    return { pcf_port_id: inner_value }
 
+# Route name and tools description
 route_name = "reducer"
 tools_description = [
     {
@@ -220,6 +176,7 @@ class ToolArguments(FlaskForm):
         _meta={"display_row": 1, "display_column": 1, "file_extensions": ".xml"}
     )
     #StringField cambiato in hidden perchè è automatico
+    '''Posso rimuoverlo? Non lo metti a mano l'indirizzo ip
     hostnames_file = HiddenField(
             label='hostnames_file',
             description='or take IPs from this field',
@@ -227,7 +184,7 @@ class ToolArguments(FlaskForm):
             validators=[],
             _meta={"display_row": 3, "display_column": 1, "multiline": False}
         )
-    
+    '''
     auto_resolve = BooleanField(label='auto_resolve',
                                 description="Automatic resolve ip from PCF server",
                                 default=True,
@@ -270,47 +227,32 @@ def process_request(
             if not bin_data:
                 continue  # Evita file vuoti
 
-            # Decodifica con UTF-8
             xml_data = bin_data.decode("utf-8")
             print("File XML ricevuto!")
-            # Valida XML rispetto allo schema XSD (attivare se necessario)
+
             if not validate_xml(xml_data, xsd_file):
                 return "XML validation failed!"
             
-            # Estraggo i dati XML con BeautifulSoup e ElementTree
             soup, site, site_name, host, port, ssl = getDataSoup(xml_data)
-            ip_obj = None
+            
+            ##########Controllo se il flag automatic_resolve è attivo
             if input_dict['auto_resolve']:
-                resolved_ips = safe_resolve(host)
-                
-                if not resolved_ips:
-                    error_msg = f"Impossibile risolvere l'host: {host}"
-                    logging.error(error_msg)
-                    return error_msg
-                
-                # Prendi il primo IP valido (puoi implementare logiche più complesse se necessario)
-                ip_obj = resolved_ips[0]
-                logging.info(f"Host '{host}' risolto in IP: {ip_obj}")
-                
-            #ip_obj = socket.gethostbyname(host)
+                ip_obj = socket.gethostbyname(host)
             print(f"IP: {ip_obj}")
             
             try:
                 print("--------------------------------------------------------")
                 print(f"current_project:{current_project['id']}")
                 
-                # 1. CERCO HOST PER IP NEL PROGETTO CORRENTE
                 current_host = db.select_project_host_by_ip(
                     project_id=current_project['id'],
                     ip=str(ip_obj)
                 )
                 
-                if current_host:  # Host già esistente
+                if current_host:  
                     current_host = current_host[0]
                     host_id = current_host['id']
-                    print(f"Host trovato: {host_id}")
-                else:  # Host non trovato, creazione nuovo
-                    print(" Nessun host trovato, lo inserisco nel DB")
+                else:  
                     host_id = db.insert_host(
                         project_id=current_project['id'], 
                         ip=str(ip_obj), 
@@ -319,6 +261,7 @@ def process_request(
                         threats=[],  
                         os=''        
                     )
+                    print(f"Host: {host_id}")
                     verify_host(host_id,db)
                     
             except Exception as e:
@@ -343,15 +286,15 @@ def process_request(
                 port = int(site.get("port", "0"))
             except ValueError:
                 logging.error(f"Porta non valida: {site.get('port')}")
-                continue
+                return f"Porta non valida: {site.get('port')}"
             ###################
+            #Aggiungere controlli per determinare se tcp o no
             is_tcp = True  # Impostazione di default
             if port != 0:
                 is_tcp = True  
 
             # Verifica se la porta esiste nel DB
             print("-" * 40)
-            print(f"Prima di inserimento\nhost_id: {host_id}, port: {port}, is_tcp: {is_tcp}")
             existing_port = db.select_host_port(host_id, port, is_tcp)
             if not existing_port:
                 db.insert_host_port(
@@ -363,12 +306,11 @@ def process_request(
                     str(current_user['id']), 
                     str(current_project['id'])
                 )
-                print("Port inserita: " + str(existing_port))
+                
 
             
-            print(f"Dopo inserimento\nhost_id: {host_id}, port: {port}, is_tcp: {is_tcp}")
             existing_port = db.select_host_port(host_id, port, is_tcp)
-            print(f"Porta esistente: {existing_port}")
+            print(f"Porta: {existing_port}")
             print("-" * 40)
             
             port_id = existing_port[0]['id']
@@ -396,7 +338,7 @@ def process_request(
                 
                 #############################
                 #contrallare se si possono eliminare
-                
+                '''
                 instances = alert.find_all("instance")
                 all_paths = []
                 if instances:
@@ -408,7 +350,7 @@ def process_request(
 
 
                 all_paths_str = "\n".join(all_paths) if all_paths else "Nessuna evidenza trovata"
-                
+                '''
                 '''-----------------------------------------------------------------'''
                 '''Valori per il DB'''
                 report = soup.find("OWASPZAPReport")
@@ -430,18 +372,16 @@ def process_request(
                 # Verifica che current_user e current_project abbiano gli ID validi
                 user_id = current_user['id']
                 project_id = current_project['id']
-
                 if not user_id or not project_id:
                     print("Errore: ID utente o progetto non valido!")
                     continue
-                
+                '''-----------------------------------------------------------------'''
                 services = create_services_dict(port_id, hostname_id)
-                print(services)
-                print(f"vulnerability_name: {vulnerability_name} \n, cwe: {cwe}\n, desc: {desc}\n, solution: {solution}\n, confidence: {confidence}\n, references: {references}\n, technical: {technical}\n, services: {services}\n, filename: {filename}\n, user_id: {user_id}\n, project_id: {project_id}")
+                
                 issue_id = db.insert_new_issue_no_dublicate(
                     f"{vulnerability_name} - {filename} Imported",
                     desc,
-                    url_path="",#chiedere se va bene
+                    url_path="",
                     cvss=0,
                     user_id=user_id,
                     services=services,
@@ -461,7 +401,6 @@ def process_request(
                          issue_type='custom', fix='', param='', fields={},
                          technical='', risks='', references='', intruder=''):
                 '''
-                print(f"📌 Salvato nel DB con issue_id: {issue_id}")
                 print("-" * 40)
 
         except Exception as e:
