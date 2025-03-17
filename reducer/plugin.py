@@ -14,11 +14,9 @@ from system.db import Database
 
 from lxml import etree
 import os
-import dns.resolver
- 
+import socket
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
-    print("prova2")
     try:
         with open(xsd_file, 'rb') as schema_file:
             schema_root = etree.XML(schema_file.read())
@@ -76,48 +74,28 @@ def split_sentences_safely(text):
         result = result[:-1]
 
     return result
-def confidence_toText(confidence):
-    if confidence == "0":
-        return "Info"
-    elif confidence == "1":
-        return "Low"
-    elif confidence == "2":
-        return "Medium"
-    elif confidence == "3":
-        return "High"
-    else:
-        return confidence
-def resolve_dns(domain):
-    # Se l'host è un oggetto IPv4Address, restituisci direttamente l'indirizzo
-    if isinstance(domain, ipaddress.IPv4Address):
-        return str(domain)
-    
-    try:
-        result = dns.resolver.resolve(domain, 'A')  # 'A' per indirizzo IPv4
-        for ipval in result:
-            return ipval.to_text()
-    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN) as e:
-        logging.error(f"Errore nella risoluzione del dominio {domain}: {e}")
-        return None
-def get_ip_address(host):
-    if not host:
-        logging.error("Host è None o vuoto.")
-        return None
-    
-    # Controlla se l'host è "localhost"
-    if host== "localhost":
-        return ipaddress.ip_address("127.0.0.1")  # Restituisce l'IP per localhost
+def confidenceRisk_toText(risk,confidence):
+    if confidence == 0:
+        confidence = "Info"
+    elif confidence == 1:
+        confidence = "Low"
+    elif confidence == 2:
+        confidence = "Medium"
+    elif confidence == 3:
+        confidence = "High"
+        
+    if risk == 0:
+        risk = "Info"
+    elif risk == 1:
+        risk = "Low"
+    elif risk == 2:
+        risk = "Medium"
+    elif risk == 3:
+        risk = "High"
+        
+    risk_str=f"Risk: {risk}\n Confidence: {confidence}"
+    return risk_str
 
-    ip = resolve_dns(host)
-    if ip is None:
-        logging.error(f"Impossibile risolvere l'IP per il dominio {host}")
-        return None
-
-    try:
-        return ipaddress.ip_address(ip)
-    except ValueError:
-        logging.error(f"IP non valido: {ip}")
-        return None
 def get_otherInfo(alert):
     otherInfo_items = alert.find_all("otherinfo")
 
@@ -254,7 +232,7 @@ def process_request(
             
             # Estraggo i dati XML con BeautifulSoup e ElementTree
             soup, site, site_name, host, port, ssl = getDataSoup(xml_data)
-            ip_obj = get_ip_address(host)
+            ip_obj = socket.gethostbyname(host)
             print(f"IP: {ip_obj}")
             
             try:
@@ -355,10 +333,11 @@ def process_request(
             # All'interno del ciclo per ogni alert
             for alert in alert_items:
                 vulnerability_name = alert.find("name").text.strip()
-                cvss=int(alert.find("riskcode").text.strip())
+                risk=int(alert.find("riskcode").text.strip())
                 
                 #############################
                 #contrallare se si possono eliminare
+                
                 instances = alert.find_all("instance")
                 all_paths = []
                 if instances:
@@ -370,6 +349,7 @@ def process_request(
 
 
                 all_paths_str = "\n".join(all_paths) if all_paths else "Nessuna evidenza trovata"
+                
                 '''-----------------------------------------------------------------'''
                 '''Valori per il DB'''
                 report = soup.find("OWASPZAPReport")
@@ -398,13 +378,13 @@ def process_request(
                 
                 services = create_services_dict(port_id, hostname_id)
                 print(services)
-                print(vulnerability_name)
+                print(f"vulnerability_name: {vulnerability_name} \n, cwe: {cwe}\n, desc: {desc}\n, solution: {solution}\n, confidence: {confidence}\n, references: {references}\n, technical: {technical}\n, services: {services}\n, filename: {filename}\n, user_id: {user_id}\n, project_id: {project_id}")
                 issue_id = db.insert_new_issue_no_dublicate(
-                    vulnerability_name,
-                    f"{desc}\n"+ "",
-                    filename,
-                    cvss,
-                    user_id,
+                    f"{vulnerability_name} - {filename} Imported",
+                    desc,
+                    url_path="",
+                    cvss=0,
+                    user_id=user_id,
                     services=services,
                     status='Need to check',
                     project_id=project_id,
@@ -412,9 +392,10 @@ def process_request(
                     issue_type='custom',
                     fix=solution,
                     technical=technical,
-                    risks=confidence_toText(confidence),
+                    risks=confidenceRisk_toText(risk,confidence),
                     references=references
                     )
+                
                 '''
                 self, name, description, url_path, cvss, user_id,
                          services, status, project_id, cve='', cwe=0,
@@ -429,3 +410,18 @@ def process_request(
             return "Uno dei file è corrotto!"
 
     return ""
+'''
+{
+  "issues": [
+    {
+      "name": "SSRF",
+      "fields": {
+        "nessus_id": {
+          "type": "number",
+          "val": 1337
+        }
+      }
+    }
+  ]
+}
+'''
