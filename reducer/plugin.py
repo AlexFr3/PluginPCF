@@ -48,36 +48,23 @@ def getDataSoup(xml_data):
     ssl = site.get("ssl", "Unknown")
     return soup,site,site_name,host,port,ssl
 def clean_html_entities(text):
-    """Rimuove le entità HTML da una stringa di testo"""
-    soup = BeautifulSoup(text, "html.parser")
-    return soup.get_text()
-def split_sentences_safely(text):
-    """Aggiunge newline tra le frasi di un testo, evitando duplicati"""
-    # Split tra i punti che non sono parte di numeri o IP
-    sentences = re.split(r'(?<!\d)\.(?!\d|\(|\))', text)
-    sentences = [sentence.strip() for sentence in sentences if sentence.strip()]  # Rimuovi spazi extra
+    """Rimuove entità HTML e formatta il testo in modo pulito."""
+    # Decodifica entità HTML (es: &amp; -> &)
+    text = BeautifulSoup(text, "html.parser").get_text()
+    
+    # Rimuovi spazi multipli e newline inconsistenti
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # Ripristina newline logici dopo punti
+    text = re.sub(r'(?<!\d)\.(\s+)', '.\n', text)
 
-    seen_phrases = set()
-    unique_sentences = []
+    return text
 
-    for sentence in sentences:
-        if sentence not in seen_phrases:
-            seen_phrases.add(sentence)
-            unique_sentences.append(sentence)
-
-    # Aggiungi un punto a ciascuna frase, ma solo se non è già presente alla fine
-    for i in range(len(unique_sentences)):
-        if not unique_sentences[i].endswith('.'):
-            unique_sentences[i] += '.'
-
-    # Unisci le frasi con '\n'
-    result = '\n'.join(unique_sentences)
-
-    # Rimuovi il punto finale extra se presente
+'''
+ # Rimuovi il punto finale extra se presente
     if result.endswith('.'):
         result = result[:-1]
-
-    return result
+'''
 def confidenceRisk_toText(risk,confidence):
     if confidence == 0:
         confidence = "Info"
@@ -99,24 +86,83 @@ def confidenceRisk_toText(risk,confidence):
         
     risk_str=f"Risk: {risk}\n Confidence: {confidence}"
     return risk_str
+
+def extract_ips(text):
+    """Trova tutti gli indirizzi IP validi all'interno del testo."""
+    ip_pattern = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b')  # Gestisce IP con e senza porta
+    found_ips = set()
+
+    for match in ip_pattern.findall(text):
+        try:
+            ip = ipaddress.ip_address(match.split(":")[0])  # Separa eventuali porte
+            found_ips.add(match)
+        except ValueError:
+            pass  # Ignora se non è un IP valido
+
+    return found_ips
+
+def split_sentences_safely(text):
+    """Divide il testo in frasi senza spezzare IP, abbreviazioni o nomi di dominio."""
+    if not text:
+        return ""
+
+    # Mantieni abbreviazioni comuni e previeni la separazione di IP
+    abbreviations = {"e.g.", "i.e.", "etc.", "vs.", "Mr.", "Dr."}
+    
+    # Usa regex per trovare i punti che separano le frasi (evitando numeri e abbreviazioni)
+    sentence_endings = re.finditer(r'(?<!\d)\. (?=[A-Z])', text)
+
+    sentences = []
+    last_index = 0
+
+    for match in sentence_endings:
+        end = match.end() - 1
+        sentence = text[last_index:end].strip()
+
+        # Controlla che la "frase" non sia un'abbreviazione o un IP
+        if sentence not in abbreviations and not re.match(r'\b(?:\d{1,3}\.){3}\d{1,3}\b', sentence):
+            sentences.append(sentence)
+            last_index = match.end()
+
+    # Aggiungi l'ultima parte del testo
+    final_sentence = text[last_index:].strip()
+    if final_sentence:
+        sentences.append(final_sentence)
+
+    return "\n".join(sentences)
+
 def get_otherInfo(alert):
+    """Estrae e formatta il contenuto di <otherinfo>, rimuovendo duplicati e gestendo gli IP."""
     otherInfo_items = alert.find_all("otherinfo")
 
-    # Crea una lista di testi, aggiungendo il newline dopo ogni frase
-    seen_phrases = set()
-    # Crea una lista di testi, aggiungendo il newline dopo ogni frase, senza bisogno di controllare duplicati
-    otherInfo_cleaned = [
-        split_sentences_safely(otherInfo.get_text(strip=True))
-            for otherInfo in otherInfo_items
-                    if (otherInfo_text := otherInfo.get_text(strip=True)) 
-                    and otherInfo_text 
-                    not in seen_phrases 
-                    and not seen_phrases.add(otherInfo_text)#utilizzando set per evitare duplicati
-    ]
-    # Unisci il testo dei <otherinfo> separato da \n
-    otherInfo_complete = '\n'.join(otherInfo_cleaned)
-    otherInfo = clean_html_entities(otherInfo_complete)
-    return otherInfo
+    unique_sentences = set()
+    ordered_sentences = []
+    ip_addresses = set()
+
+    for item in otherInfo_items:
+        text = item.get_text(" ", strip=True) if item else ""
+        text = clean_html_entities(text) if text else ""
+
+        if not text:
+            continue
+
+        # Estrai gli IP prima di pulire il testo
+        ip_addresses.update(extract_ips(text))
+
+        sentences = split_sentences_safely(text).split("\n") if text else []
+
+        for sentence in sentences:
+            sentence_clean = sentence.strip()
+            if sentence_clean and sentence_clean.lower() not in unique_sentences:
+                unique_sentences.add(sentence_clean.lower())
+                ordered_sentences.append(sentence_clean)
+
+    if ip_addresses:
+        ordered_sentences.append("\nIP rilevati:")
+        ordered_sentences.extend(sorted(ip_addresses))
+
+    return "\n".join(ordered_sentences) if ordered_sentences else "Nessuna informazione disponibile."
+
 def technical_description(site_name, host, port, ssl, language, otherInfo):
     """Genera una descrizione tecnica basata su vari parametri"""
     technical_parts = []
