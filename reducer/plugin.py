@@ -15,7 +15,7 @@ from system.db import Database
 from lxml import etree
 import os
 import socket
-
+import json
 class Config:
     XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
  
@@ -59,12 +59,6 @@ def clean_html_entities(text):
     text = re.sub(r'(?<!\d)\.(\s+)', '.\n', text)
 
     return text
-
-'''
- # Rimuovi il punto finale extra se presente
-    if result.endswith('.'):
-        result = result[:-1]
-'''
 def confidenceRisk_toText(risk,confidence):
     if confidence == 0:
         confidence = "Info"
@@ -86,7 +80,6 @@ def confidenceRisk_toText(risk,confidence):
         
     risk_str=f"Risk: {risk}\n Confidence: {confidence}"
     return risk_str
-
 def extract_ips(text):
     """Trova tutti gli indirizzi IP validi all'interno del testo."""
     ip_pattern = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b')  # Gestisce IP con e senza porta
@@ -161,7 +154,7 @@ def get_otherInfo(alert):
         ordered_sentences.append("\nIP rilevati:")
         ordered_sentences.extend(sorted(ip_addresses))
 
-    return "\n".join(ordered_sentences) if ordered_sentences else "Nessuna informazione disponibile."
+    return "\n".join(ordered_sentences) if ordered_sentences else ""
 
 def technical_description(site_name, host, port, ssl, language, otherInfo):
     """Genera una descrizione tecnica basata su vari parametri"""
@@ -183,6 +176,9 @@ def verify_host(host_id,db):
         logging.error(f"ERRORE: Host con ID {host_id} non trovato!")
         return f"Errore: Host non trovato dopo l'inserimento."
     return
+def add_to_services(inner_value, pcf_port_id, service):
+    
+    return
 def create_services_dict(pcf_port_id, pcf_hostname_id):
     """
     Crea un dizionario services nel formato:
@@ -193,21 +189,42 @@ def create_services_dict(pcf_port_id, pcf_hostname_id):
       - "0" indica che non c'è una porta associata (solo IP)
       - idHostname è il pcf_hostname_id
     """
+    service={}
     # Costruisce il dizionario invece di una stringa formattata
     inner_value = ["0", str(pcf_hostname_id)]  # La lista invece della stringa
+    #add_to_services(inner_value, pcf_port_id, service)
     return { pcf_port_id: inner_value }
+def get_poc_string(alert):
+    """Crea una stringa formattata per il PoC"""
+    instances = alert.find_all("instance")
+    all_instances = []
+    if instances:
+        for instance in instances:
+            uri = instance.find("uri").text.strip()
+            method = instance.find("method").text.strip()
+            evidence = instance.find("evidence").text.strip()
+            param = instance.find("param").text.strip()
+            attack = instance.find("attack").text.strip()
+            all_instances.append(f"{method} {uri}")
+            if param: all_instances.append(f"- param: {param}")
+            if attack: all_instances.append(f"- attack: {attack}")
+            if evidence: all_instances.append(f"- PoC: {evidence}")
+            all_instances.append("-"*40)
+    all_instances_str = "\n".join(all_instances) if all_instances else "Nessuna evidenza trovata"
+    return all_instances_str
 
+         
 # Route name and tools description
 route_name = "reducer"
 tools_description = [
     {
         "Icon file": "icon.png",
-        "Icon URL": "https://i.ibb.co/DVWwGcS/redcheck.png",
+        "Icon URL": "https://i.ibb.co/DVWwGcS/redcheck.png",#### cambiare
         "Official name": "Reducer",
         "Short name": "reducer",
         "Description": "Remove unnecessary warnings",
-        "URL": "https://www.redcheck.ru/",
-        "Plugin author": "@drakylar"
+        "URL": "",
+        "Plugin author": "@alexfr3"
     }
 ]
 
@@ -230,13 +247,12 @@ class ToolArguments(FlaskForm):
             validators=[],
             _meta={"display_row": 3, "display_column": 1, "multiline": False}
         )
-    '''
     auto_resolve = BooleanField(label='auto_resolve',
                                 description="Automatic resolve ip from PCF server",
                                 default=True,
                                 validators=[],
                                 _meta={"display_row": 2, "display_column": 1})
-    
+    '''
     hosts_description = StringField(
             label='hosts_description',
             description='Host description',
@@ -268,6 +284,7 @@ def process_request(
         return "Nessun file XML ricevuto!"
     
     xsd_file = os.path.join(os.getcwd(), Config.XSD_PATH)
+    
     for bin_data in xml_files:
         try:
             if not bin_data:
@@ -280,10 +297,13 @@ def process_request(
                 return "XML validation failed!"
             
             soup, site, site_name, host, port, ssl = getDataSoup(xml_data)
-            
-            ##########Controllo se il flag automatic_resolve è attivo
-            if input_dict['auto_resolve']:
-                ip_obj = socket.gethostbyname(host)
+            try:
+                ipaddress.ip_address(host)
+                is_ip = True
+            except ValueError:
+                is_ip = False
+
+            ip_obj = socket.gethostbyname(host)
             print(f"IP: {ip_obj}")
             
             try:
@@ -333,11 +353,11 @@ def process_request(
             except ValueError:
                 logging.error(f"Porta non valida: {site.get('port')}")
                 return f"Porta non valida: {site.get('port')}"
-            ###################
-            #Aggiungere controlli per determinare se tcp o no
-            is_tcp = True  # Impostazione di default
-            if port != 0:
-                is_tcp = True  
+            
+            """
+            Impostazione di default perchè con ZAP il protocollo è sempre tcp
+            """
+            is_tcp = True
 
             # Verifica se la porta esiste nel DB
             print("-" * 40)
@@ -364,15 +384,19 @@ def process_request(
                 'pcf_port_id': port_id,
                 'pcf_host_id': host_id,
                 'pcf_hostname_id': pcf_hostname_id
-            } 
+            }
+            '''
             print("*" * 40)
             print(f"PCF Port ID: {web_dict['pcf_port_id']}")
             print(f"PCF Host ID: {web_dict['pcf_host_id']}")
             print(f"PCF Hostname ID: {web_dict['pcf_hostname_id']}")
             print("*" * 40)
+            '''
             '''-----------------------------------------------------------------'''
-            # Estrai tutte le istanze della vulnerabilità
-            # Analizza gli alert di vulnerabilità
+            """
+             Estrai tutte le istanze della vulnerabilità
+             Analizza gli alert di vulnerabilità
+            """
             alert_items = soup.find_all("alertitem")
             if not alert_items:
                 print("Nessun alert trovato.")
@@ -381,24 +405,10 @@ def process_request(
             for alert in alert_items:
                 vulnerability_name = alert.find("name").text.strip()
                 risk=int(alert.find("riskcode").text.strip())
-                
-                #############################
-                #contrallare se si possono eliminare
-                '''
-                instances = alert.find_all("instance")
-                all_paths = []
-                if instances:
-                    for instance in instances:
-                        uri = instance.find("uri").text.strip()
-                        method = instance.find("method").text.strip()
-                        evidence = instance.find("evidence").text.strip()
-                        all_paths.append(f"{method} {uri} - Evidenza: {evidence}")
-
-
-                all_paths_str = "\n".join(all_paths) if all_paths else "Nessuna evidenza trovata"
-                '''
+                                
                 '''-----------------------------------------------------------------'''
                 '''Valori per il DB'''
+                poc_string=get_poc_string(alert)
                 report = soup.find("OWASPZAPReport")
                 filename = report.get("programName", "zap_scan.xml")
                 language = report.get("language", "")
@@ -411,7 +421,6 @@ def process_request(
                 confidence = int(confidence_complete) if alert.find("confidence") else alert.find("confidencedesc").text.strip() if alert.find("confidencedesc") else 0
                 
                 otherInfo = get_otherInfo(alert)
-
                 technical=technical_description(site_name, host, port, ssl, language, otherInfo)
                 
                 '''-----------------------------------------------------------------'''
@@ -422,35 +431,56 @@ def process_request(
                     print("Errore: ID utente o progetto non valido!")
                     continue
                 '''-----------------------------------------------------------------'''
-                services = create_services_dict(port_id, hostname_id)
-                
-                issue_id = db.insert_new_issue_no_dublicate(
-                    f"{vulnerability_name} - {filename} Imported",
-                    desc,
-                    url_path="",
-                    cvss=0,
-                    user_id=user_id,
-                    services=services,
-                    status='Need to check',
-                    project_id=project_id,
-                    cwe=cwe,
-                    issue_type='custom',
-                    fix=solution,
-                    technical=technical,
-                    risks=confidenceRisk_toText(risk,confidence),
-                    references=references
-                    )
-                
-                '''
-                self, name, description, url_path, cvss, user_id,
-                         services, status, project_id, cve='', cwe=0,
-                         issue_type='custom', fix='', param='', fields={},
-                         technical='', risks='', references='', intruder=''):
-                '''
-                print("-" * 40)
+                #search_issues_port_ids,select_project_issues,join_duplicate_issues
+                name= f"{vulnerability_name} - {filename} Imported"
+                issue_names = {}
+                for issue in db.select_project_issues(project_id):
+                    # Aggiungi solo se il nome non è già presente
+                    if issue['name'] not in issue_names:
+                        issue_names[issue['name']] = issue['id']  # Aggiungi il nome come chiave e l'ID come valore
 
+                # Nel blocco dove verifichi se l'issue esiste già
+                # Nel blocco dove verifichi se l'issue esiste già
+                if name in issue_names:
+                    issue_id = issue_names[name]['id']
+                    old_services = issue_names[name]['services']
+                    print(f"L'errore : {name} ; esiste già con ID: {issue_id}")
+                    # Converti manualmente se necessario
+                    new_services = create_services_dict(
+                        port_id, 
+                        hostname_id
+                    )
+                    
+                    # Aggiorna solo se ci sono modifiche
+                    if new_services != old_services:
+                        db.update_issue_services(issue_id, new_services)
+                else:
+                    services = create_services_dict(port_id, hostname_id)
+                    print(services)
+                    issue_id = db.insert_new_issue_no_dublicate(
+                        name,
+                        desc,
+                        url_path="",
+                        cvss=0,
+                        user_id=user_id,
+                        services=services,
+                        status='Need to check',
+                        project_id=project_id,
+                        cwe=cwe,
+                        issue_type='custom',
+                        fix=solution,
+                        technical=technical,
+                        risks=confidenceRisk_toText(risk,confidence),
+                        references=references
+                        )
+                
+                poc = str(poc_string)
+                dati = poc.encode('utf-8')
+                db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
+                                  poc_id='random', storage='database', data=dati)
+                
+                
         except Exception as e:
             logging.error(f"Errore durante l'importazione del file: {e}", exc_info=True)
             return "Uno dei file è corrotto!"
-
     return ""
