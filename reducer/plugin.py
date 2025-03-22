@@ -18,7 +18,15 @@ import socket
 import json
 class Config:
     XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
- 
+def extract_services(s):
+    # Trova l'indice del primo ":" e dell'ultima "}"
+    start = s.find(':')
+    end = s.rfind('}')
+    if start == -1 or end == -1:
+        return None
+    # Estrae la parte compresa tra i due
+    result = s[start+1:end].strip()
+    return result
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -176,24 +184,77 @@ def verify_host(host_id,db):
         logging.error(f"ERRORE: Host con ID {host_id} non trovato!")
         return f"Errore: Host non trovato dopo l'inserimento."
     return
-def add_to_services(inner_value, pcf_port_id, service):
+def replace_single_quotes_with_double(input_str):
+    """Converte gli apici singoli in doppi in una stringa JSON"""
+    try:
+        # Prima converte in dizionario
+        data = json.loads(input_str.replace("'", '"'))
+        # Poi riserializza correttamente
+        return json.dumps(data)
+    except Exception as e:
+        logging.error(f"Error converting quotes: {str(e)}")
+        return input_str
+def extract_services(input_string):
+    # Trova tutto ciò che è tra parentesi graffe
+    match = re.search(r'\{(.*)\}', input_string)
+    if match:
+        return [match.group(1).strip()]  # Restituisce il contenuto dentro le parentesi graffe come lista
+    else:
+        return []  # Restituisce una lista vuota se non trova parentesi graffe
     
-    return
-def create_services_dict(pcf_port_id, pcf_hostname_id):
+def create_services_dict(pcf_port_id, pcf_hostname_id, issue_id=None, project_id=None, db=None, old_services=None):
     """
     Crea un dizionario services nel formato:
-    { idService: [ "[\"0\",\"idHostname\"]" ] }
+    { idPort: [ "[\"0\",\"idHostname\"]" ] }
 
     Dove:
       - idService è il pcf_port_id
       - "0" indica che non c'è una porta associata (solo IP)
       - idHostname è il pcf_hostname_id
     """
-    service={}
+    
     # Costruisce il dizionario invece di una stringa formattata
-    inner_value = ["0", str(pcf_hostname_id)]  # La lista invece della stringa
-    #add_to_services(inner_value, pcf_port_id, service)
+    inner_value = ["0", str(pcf_hostname_id)]   # La lista invece della stringa
     return { pcf_port_id: inner_value }
+'''
+    {"bc4467dc-5e83-470e-8a19-ff05e85ee13f": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
+ "a0072228-a8d7-4fb1-b873-f5266147f8a6": ["0"], 
+ "1996cccf-cabd-454a-aba6-610a54446fd3": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
+ "6e048d95-10ca-4050-b4a9-0c5bb6b26c1f": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"], 
+ "ccd8a8e2-1e3d-4636-b853-6cadedfeb1e6": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"]}
+{"8b088405-b5fb-44b2-8fea-f84c82585337": ["0", "5b0b7655-7f33-4f2e-a8bc-d672d570a8c6", "312e8275-53c2-4b15-825d-787b744ba67f", "4ae05a9f-ad8a-4744-9940-821c2a912d45"]}
+per più hostnames
+    '''
+def update_services_dict(pcf_port_id, pcf_hostname_id, old_services):
+    """Aggiorna i services esistenti mantenendo la struttura corretta"""
+    # Converti old_services in dizionario se è una stringa JSON
+    if isinstance(old_services, str):
+        try:
+            old_services = json.loads(old_services)
+        except json.JSONDecodeError:
+            old_services = {}
+
+    # Converti pcf_port_id a stringa
+    port_key = str(pcf_port_id)
+    new_entry = ["0", str(pcf_hostname_id)]
+
+    # Inizializza la struttura se non esiste
+    if not isinstance(old_services, dict):
+        old_services = {}
+
+    # Crea la lista per la porta se non esiste
+    if port_key not in old_services:
+        print(f"Creazione nuova entry per porta {port_key}")
+        old_services[port_key] = []
+
+    # Aggiungi il nuovo hostname solo se non esiste già
+    if new_entry not in old_services[port_key]:
+        print(f"Aggiunta nuovo hostname {new_entry} alla porta {port_key}")
+        old_services[port_key].append(new_entry)
+    else:
+        print(f"Hostname {new_entry} già presente per la porta {port_key}")
+
+    return old_services
 def get_poc_string(alert):
     """Crea una stringa formattata per il PoC"""
     instances = alert.find_all("instance")
@@ -437,26 +498,32 @@ def process_request(
                 for issue in db.select_project_issues(project_id):
                     # Aggiungi solo se il nome non è già presente
                     if issue['name'] not in issue_names:
-                        issue_names[issue['name']] = issue['id']  # Aggiungi il nome come chiave e l'ID come valore
-
+                        issue_names[issue['name']] = issue  # Ora issue_names[name] conterrà un dizionario con tutti i dati
                 # Nel blocco dove verifichi se l'issue esiste già
                 # Nel blocco dove verifichi se l'issue esiste già
                 if name in issue_names:
                     issue_id = issue_names[name]['id']
                     old_services = issue_names[name]['services']
+                    print("Old services in if: "+str(old_services))
                     print(f"L'errore : {name} ; esiste già con ID: {issue_id}")
+                    print("*" * 40)
                     # Converti manualmente se necessario
-                    new_services = create_services_dict(
+                    new_services = update_services_dict(
                         port_id, 
-                        hostname_id
+                        hostname_id,
+                        old_services
                     )
-                    
+                    print("New services creati: "+str(new_services))
                     # Aggiorna solo se ci sono modifiche
                     if new_services != old_services:
-                        db.update_issue_services(issue_id, new_services)
+                        print("AGGIORNAMENTO SERVIZI")
+                        print("Update services: "+str(new_services))
+                        print("*" * 40)
+                        #db.update_issue_services(issue_id, new_services)
+                        print("FINE AGGIORNAMENTO SERVIZI")
                 else:
                     services = create_services_dict(port_id, hostname_id)
-                    print(services)
+                    #print(services)
                     issue_id = db.insert_new_issue_no_dublicate(
                         name,
                         desc,
@@ -484,3 +551,23 @@ def process_request(
             logging.error(f"Errore durante l'importazione del file: {e}", exc_info=True)
             return "Uno dei file è corrotto!"
     return ""
+''' Esempio di services
+{"bc4467dc-5e83-470e-8a19-ff05e85ee13f": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
+ "a0072228-a8d7-4fb1-b873-f5266147f8a6": ["0"], 
+ "1996cccf-cabd-454a-aba6-610a54446fd3": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
+ "6e048d95-10ca-4050-b4a9-0c5bb6b26c1f": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"], 
+ "ccd8a8e2-1e3d-4636-b853-6cadedfeb1e6": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"]}
+
+
+
+
+
+Old services: {"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]}
+web-1  | L'errore : Configurazione errata multi dominio - ZAP Imported ; esiste già con ID: 835b45be-c7ed-458c-947d-2e3dd4e7fe62
+web-1  | old_services prima di creare new_services : {"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]}
+web-1  | extracted_services: 
+['"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]', 
+['0', '5be74ba7-bc54-47bf-9f60-1e0815539b39']]
+web-1  | New services creati: ['"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]', ['0', '5be74ba7-bc54-47bf-9f60-1e0815539b39']]
+web-1  | Update services: ['"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]', ['0', '5be74ba7-bc54-47bf-9f60-
+'''
