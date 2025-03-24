@@ -16,17 +16,28 @@ from lxml import etree
 import os
 import socket
 import json
+"""
+ZAP Report Importer Plugin
+
+Questo modulo gestisce l'importazione di report XML generati da ZAP
+in un sistema di gestione delle vulnerabilità. 
+
+Il plugin esegue:
+1. Validazione degli input XML contro schema XSD
+2. Estrazione dati di host, porte e vulnerabilità
+3. Integrazione con database di sicurezza
+4. Mappatura delle relazioni tra servizi e vulnerabilità
+5. Gestione delle evidenze di prova (PoC)
+
+Struttura Dati Chiave:
+services = {
+    "port_id": ["0", "hostname_id1", "hostname_id2"],
+    ...
+}
+"""
 class Config:
+    """Configurazione percorsi risorse plugin"""
     XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
-def extract_services(s):
-    # Trova l'indice del primo ":" e dell'ultima "}"
-    start = s.find(':')
-    end = s.rfind('}')
-    if start == -1 or end == -1:
-        return None
-    # Estrae la parte compresa tra i due
-    result = s[start+1:end].strip()
-    return result
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -45,6 +56,16 @@ def validate_xml(xml_content, xsd_file):
         logging.error(f"Il file XML NON è valido: {e}")
         return False
 def getDataSoup(xml_data):
+    """
+    Estrae dati base dall'XML utilizzando BeautifulSoup
+    
+    Args:
+        xml_data (str): Dati XML del report
+    
+    Returns:
+        tuple: (soup, site, site_name, host, port, ssl)
+    
+    """
     soup = BeautifulSoup(xml_data, "xml")
     site = soup.find("site")
     if not site:
@@ -56,7 +77,18 @@ def getDataSoup(xml_data):
     ssl = site.get("ssl", "Unknown")
     return soup,site,site_name,host,port,ssl
 def clean_html_entities(text):
-    """Rimuove entità HTML e formatta il testo in modo pulito."""
+    """
+    Normalizza testo rimuovendo entità HTML e formattazione inconsistente
+    
+    Args:
+        text (str): Testo da pulire
+    
+    Returns:
+        str: Testo normalizzato
+    
+    Esempio:
+        clean_html_entities("Hello&nbsp;World!") -> 'Hello World!'
+    """
     # Decodifica entità HTML (es: &amp; -> &)
     text = BeautifulSoup(text, "html.parser").get_text()
     
@@ -68,6 +100,22 @@ def clean_html_entities(text):
 
     return text
 def confidenceRisk_toText(risk,confidence):
+    """
+    Converte codici numerici rischio/confidenza in formato leggibile
+    
+    Scala Valori:
+        - 0: Info
+        - 1: Low
+        - 2: Medium 
+        - 3: High
+    
+    Args:
+        risk (int): Codice rischio (0-3)
+        confidence (int): Codice confidenza (0-3)
+    
+    Returns:
+        str: Stringa formattata rischio/confidenza
+    """
     if confidence == 0:
         confidence = "Info"
     elif confidence == 1:
@@ -89,7 +137,18 @@ def confidenceRisk_toText(risk,confidence):
     risk_str=f"Risk: {risk}\n Confidence: {confidence}"
     return risk_str
 def extract_ips(text):
-    """Trova tutti gli indirizzi IP validi all'interno del testo."""
+    """
+    Identifica indirizzi IP in testo con supporto a porte
+    
+    Args:
+        text (str): Testo da analizzare
+    
+    Returns:
+        set: Insieme IP unici con porte opzionali
+    
+    Esempio:
+        extract_ips("Connected to 192.168.1.1:8080")->{'192.168.1.1:8080'}
+    """
     ip_pattern = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?\b')  # Gestisce IP con e senza porta
     found_ips = set()
 
@@ -103,7 +162,19 @@ def extract_ips(text):
     return found_ips
 
 def split_sentences_safely(text):
-    """Divide il testo in frasi senza spezzare IP, abbreviazioni o nomi di dominio."""
+    """
+    Divide il testo in frasi preservando IP e abbreviazioni
+    
+    Args:
+        text (str): Testo da processare
+    
+    Returns:
+        str: Testo diviso in frasi con newline
+    
+    Note:
+        - Mantiene intatti gli indirizzi IP
+        - Preserva abbreviazioni comuni (es. 'e.g.', 'i.e.')
+    """
     if not text:
         return ""
 
@@ -133,7 +204,15 @@ def split_sentences_safely(text):
     return "\n".join(sentences)
 
 def get_otherInfo(alert):
-    """Estrae e formatta il contenuto di <otherinfo>, rimuovendo duplicati e gestendo gli IP."""
+    """
+    Estrae e formatta le informazioni aggiuntive dall'alert
+    
+    Args:
+        alert (BeautifulSoup): Oggetto BeautifulSoup dell'alert
+    
+    Returns:
+        str: Testo formattato con IP rilevati e informazioni
+    """
     otherInfo_items = alert.find_all("otherinfo")
 
     unique_sentences = set()
@@ -165,7 +244,20 @@ def get_otherInfo(alert):
     return "\n".join(ordered_sentences) if ordered_sentences else ""
 
 def technical_description(site_name, host, port, ssl, language, otherInfo):
-    """Genera una descrizione tecnica basata su vari parametri"""
+    """
+    Genera una descrizione tecnica formattata
+    
+    Args:
+        site_name (str): Nome del sito
+        host (str): Hostname/IP
+        port (int): Porta
+        ssl (bool): Flag SSL
+        language (str): Linguaggio rilevato
+        otherInfo (str): Informazioni aggiuntive
+    
+    Returns:
+        str: Descrizione formattata con campi non vuoti
+    """
     technical_parts = []
     if site_name: technical_parts.append(f"Site: {site_name}")
     if host: technical_parts.append(f"Host: {host}")
@@ -175,34 +267,7 @@ def technical_description(site_name, host, port, ssl, language, otherInfo):
     if otherInfo: technical_parts.append(f"OtherInfo: {otherInfo}")
 
     return "\n".join(technical_parts)
-def verify_host(host_id,db):
-    """Verifica che l'host sia presente nel db"""
-    current_host = db.select_host(host_id)  
-    if current_host:
-        print("Host confermato nel DB")
-    else:
-        logging.error(f"ERRORE: Host con ID {host_id} non trovato!")
-        return f"Errore: Host non trovato dopo l'inserimento."
-    return
-def replace_single_quotes_with_double(input_str):
-    """Converte gli apici singoli in doppi in una stringa JSON"""
-    try:
-        # Prima converte in dizionario
-        data = json.loads(input_str.replace("'", '"'))
-        # Poi riserializza correttamente
-        return json.dumps(data)
-    except Exception as e:
-        logging.error(f"Error converting quotes: {str(e)}")
-        return input_str
-def extract_services(input_string):
-    # Trova tutto ciò che è tra parentesi graffe
-    match = re.search(r'\{(.*)\}', input_string)
-    if match:
-        return [match.group(1).strip()]  # Restituisce il contenuto dentro le parentesi graffe come lista
-    else:
-        return []  # Restituisce una lista vuota se non trova parentesi graffe
-    
-def create_services_dict(pcf_port_id, pcf_hostname_id):
+def create_services_dict(port_id, hostname_id):
     """
     Crea un dizionario services nel formato:
     { idPort: [ "[\"0\",\"idHostname\"]" ] }
@@ -214,28 +279,42 @@ def create_services_dict(pcf_port_id, pcf_hostname_id):
     """
     
     # Costruisce il dizionario invece di una stringa formattata
-    inner_value = ["0", str(pcf_hostname_id)]   # La lista invece della stringa
-    return { pcf_port_id: inner_value }
-'''
-    {"bc4467dc-5e83-470e-8a19-ff05e85ee13f": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
- "a0072228-a8d7-4fb1-b873-f5266147f8a6": ["0"], 
- "1996cccf-cabd-454a-aba6-610a54446fd3": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
- "6e048d95-10ca-4050-b4a9-0c5bb6b26c1f": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"], 
- "ccd8a8e2-1e3d-4636-b853-6cadedfeb1e6": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"]}
-{"8b088405-b5fb-44b2-8fea-f84c82585337": ["0", "5b0b7655-7f33-4f2e-a8bc-d672d570a8c6", "312e8275-53c2-4b15-825d-787b744ba67f", "4ae05a9f-ad8a-4744-9940-821c2a912d45"]}
-per più hostnames
-    '''
-def update_services_dict(pcf_port_id, pcf_hostname_id, old_services):
-    """Aggiorna i services esistenti mantenendo la struttura corretta"""
-    # Conversione iniziale a dizionario
+    inner_value = ["0", str(hostname_id)]   # La lista invece della stringa
+    return { port_id: inner_value }
+
+def update_services_dict(port_id, hostname_id, old_services):
+    """
+    Aggiorna la mappatura servizi mantenendo lo storico
+    {idPort: [ "0", "idHostname1", "idHostname2", ... ]}
+    
+    Args:
+        port_id (str): UUID della porta
+        hostname_id (str): UUID dell'hostname
+        old_services (dict/str): Servizi esistenti (dict o JSON string)
+    
+    Returns:
+        dict: Dizionario aggiornato con la nuova relazione
+    
+    Note:
+        - Aggiunge "0" come placeholder se non esiste la porta
+        - Previene duplicati negli hostname
+        
+    Esempio di come possono essere aggiornati i services:
+    {
+        "bc4467dc-5e83-470e-8a19-ff05e85ee13f": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
+        "a0072228-a8d7-4fb1-b873-f5266147f8a6": ["0"], 
+        "8b088405-b5fb-44b2-8fea-f84c82585337": ["0", "5b0b7655-7f33-4f2e-a8bc-d672d570a8c6", "312e8275-53c2-4b15-825d-787b744ba67f", "4ae05a9f-ad8a-4744-9940-821c2a912d45"]
+    }
+    """
+    # Conversione a dizionario
     if isinstance(old_services, str):
         try:
             old_services = json.loads(old_services)
         except json.JSONDecodeError:
             old_services = {}
 
-    port_key = str(pcf_port_id)
-    host_id = str(pcf_hostname_id)
+    port_key = str(port_id)
+    host_id = str(hostname_id)
     
     # Inizializzazione struttura
     if not isinstance(old_services, dict):
@@ -258,7 +337,15 @@ def update_services_dict(pcf_port_id, pcf_hostname_id, old_services):
 
     return old_services
 def get_poc_string(alert):
-    """Crea una stringa formattata per il PoC"""
+    """
+    Genera una stringa di Proof of Concept dalle istanze dell'alert
+    
+    Args:
+        alert (BeautifulSoup): Oggetto BeautifulSoup dell'alert XML
+    
+    Returns:
+        str: Stringa formattata con dettagli delle istanze
+    """
     instances = alert.find_all("instance")
     all_instances = []
     if instances:
@@ -391,7 +478,6 @@ def process_request(
                         os=''        
                     )
                     print(f"Host: {host_id}")
-                    verify_host(host_id,db)
                     
             except Exception as e:
                 logging.error(f"Errore nella selezione dell'host: {str(e)}")
@@ -532,6 +618,7 @@ def process_request(
                 
                 poc = str(poc_string)
                 dati = poc.encode('utf-8')
+                pocs=db.select_issue_pocs(issue_id)
                 db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
                                   poc_id='random', storage='database', data=dati)
                 
