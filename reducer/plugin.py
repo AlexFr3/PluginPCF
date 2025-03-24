@@ -202,7 +202,7 @@ def extract_services(input_string):
     else:
         return []  # Restituisce una lista vuota se non trova parentesi graffe
     
-def create_services_dict(pcf_port_id, pcf_hostname_id, issue_id=None, project_id=None, db=None, old_services=None):
+def create_services_dict(pcf_port_id, pcf_hostname_id):
     """
     Crea un dizionario services nel formato:
     { idPort: [ "[\"0\",\"idHostname\"]" ] }
@@ -227,32 +227,34 @@ per più hostnames
     '''
 def update_services_dict(pcf_port_id, pcf_hostname_id, old_services):
     """Aggiorna i services esistenti mantenendo la struttura corretta"""
-    # Converti old_services in dizionario se è una stringa JSON
+    # Conversione iniziale a dizionario
     if isinstance(old_services, str):
         try:
             old_services = json.loads(old_services)
         except json.JSONDecodeError:
             old_services = {}
 
-    # Converti pcf_port_id a stringa
     port_key = str(pcf_port_id)
-    new_entry = ["0", str(pcf_hostname_id)]
-
-    # Inizializza la struttura se non esiste
+    host_id = str(pcf_hostname_id)
+    
+    # Inizializzazione struttura
     if not isinstance(old_services, dict):
         old_services = {}
 
-    # Crea la lista per la porta se non esiste
+    # Crea entry per la porta se non esiste
     if port_key not in old_services:
-        print(f"Creazione nuova entry per porta {port_key}")
-        old_services[port_key] = []
+        print(f"Creazione di nuova entry per la porta : {port_key}")
+        old_services[port_key] = ["0"]  # Inizializza con elemento "0"
 
-    # Aggiungi il nuovo hostname solo se non esiste già
-    if new_entry not in old_services[port_key]:
-        print(f"Aggiunta nuovo hostname {new_entry} alla porta {port_key}")
-        old_services[port_key].append(new_entry)
+    # Estrae gli UUID esistenti per la porta corrente (escludendo lo "0")
+    existing_uuids = old_services[port_key][1:]
+
+    # Controlla se l'hostname_id è già presente
+    if host_id not in existing_uuids:
+        print(f"Aggiunta nuovo hostname {host_id} alla porta {port_key}")
+        old_services[port_key].append(host_id)
     else:
-        print(f"Hostname {new_entry} già presente per la porta {port_key}")
+        print(f"Hostname {host_id} già presente per la porta {port_key}")
 
     return old_services
 def get_poc_string(alert):
@@ -396,7 +398,7 @@ def process_request(
                 return f"Errore nel recupero dell'host: {str(e)}"
             '''-----------------------------------------------------------------''' 
             # gestione hostname
-            pcf_hostname_id = "0"
+            hostname_id = "0"
             
             if host:
                 current_hostname = db.select_ip_hostname(host_id, host)
@@ -406,7 +408,6 @@ def process_request(
                     hostname_id = db.insert_hostname(host_id, host,
                                                     input_dict['hostnames_description'],
                                                     current_user['id'])
-            pcf_hostname_id = hostname_id
             '''-----------------------------------------------------------------'''
             # Gestione porta
             try:
@@ -441,18 +442,7 @@ def process_request(
             print("-" * 40)
             
             port_id = existing_port[0]['id']
-            web_dict = {
-                'pcf_port_id': port_id,
-                'pcf_host_id': host_id,
-                'pcf_hostname_id': pcf_hostname_id
-            }
-            '''
-            print("*" * 40)
-            print(f"PCF Port ID: {web_dict['pcf_port_id']}")
-            print(f"PCF Host ID: {web_dict['pcf_host_id']}")
-            print(f"PCF Hostname ID: {web_dict['pcf_hostname_id']}")
-            print("*" * 40)
-            '''
+            
             '''-----------------------------------------------------------------'''
             """
              Estrai tutte le istanze della vulnerabilità
@@ -492,22 +482,20 @@ def process_request(
                     print("Errore: ID utente o progetto non valido!")
                     continue
                 '''-----------------------------------------------------------------'''
-                #search_issues_port_ids,select_project_issues,join_duplicate_issues
                 name= f"{vulnerability_name} - {filename} Imported"
                 issue_names = {}
                 for issue in db.select_project_issues(project_id):
-                    # Aggiungi solo se il nome non è già presente
+                    # Aggiungo solo se il nome non è già presente
                     if issue['name'] not in issue_names:
-                        issue_names[issue['name']] = issue  # Ora issue_names[name] conterrà un dizionario con tutti i dati
-                # Nel blocco dove verifichi se l'issue esiste già
-                # Nel blocco dove verifichi se l'issue esiste già
+                        issue_names[issue['name']] = issue  #issue_names[name] contiene un dizionario con tutti i dati
+                
                 if name in issue_names:
                     issue_id = issue_names[name]['id']
                     old_services = issue_names[name]['services']
                     print("Old services in if: "+str(old_services))
                     print(f"L'errore : {name} ; esiste già con ID: {issue_id}")
                     print("*" * 40)
-                    # Converti manualmente se necessario
+
                     new_services = update_services_dict(
                         port_id, 
                         hostname_id,
@@ -518,9 +506,10 @@ def process_request(
                     if new_services != old_services:
                         print("AGGIORNAMENTO SERVIZI")
                         print("Update services: "+str(new_services))
-                        print("*" * 40)
-                        #db.update_issue_services(issue_id, new_services)
+                        db.update_issue_services(issue_id, new_services)
                         print("FINE AGGIORNAMENTO SERVIZI")
+                    print("*" * 40)
+                    
                 else:
                     services = create_services_dict(port_id, hostname_id)
                     #print(services)
@@ -551,23 +540,3 @@ def process_request(
             logging.error(f"Errore durante l'importazione del file: {e}", exc_info=True)
             return "Uno dei file è corrotto!"
     return ""
-''' Esempio di services
-{"bc4467dc-5e83-470e-8a19-ff05e85ee13f": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
- "a0072228-a8d7-4fb1-b873-f5266147f8a6": ["0"], 
- "1996cccf-cabd-454a-aba6-610a54446fd3": ["0", "076a64a2-6e66-49d0-8624-19ff36a886c2"], 
- "6e048d95-10ca-4050-b4a9-0c5bb6b26c1f": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"], 
- "ccd8a8e2-1e3d-4636-b853-6cadedfeb1e6": ["0", "761ea5ae-864a-4a4e-a425-79bdd2952164"]}
-
-
-
-
-
-Old services: {"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]}
-web-1  | L'errore : Configurazione errata multi dominio - ZAP Imported ; esiste già con ID: 835b45be-c7ed-458c-947d-2e3dd4e7fe62
-web-1  | old_services prima di creare new_services : {"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]}
-web-1  | extracted_services: 
-['"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]', 
-['0', '5be74ba7-bc54-47bf-9f60-1e0815539b39']]
-web-1  | New services creati: ['"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]', ['0', '5be74ba7-bc54-47bf-9f60-1e0815539b39']]
-web-1  | Update services: ['"d1ee8e73-0dd0-4e23-9d52-ff0642c070ec": ["0", "5be74ba7-bc54-47bf-9f60-1e0815539b39"]', ['0', '5be74ba7-bc54-47bf-9f60-
-'''
