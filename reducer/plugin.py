@@ -27,7 +27,7 @@ Il plugin esegue:
 2. Estrazione dati di host, porte e vulnerabilità
 3. Integrazione con database di sicurezza
 4. Mappatura delle relazioni tra servizi e vulnerabilità
-5. Gestione delle evidenze di prova (PoC)
+5. Gestione delle evidenze  (PoC)
 
 Struttura Dati Chiave:
 services = {
@@ -37,7 +37,7 @@ services = {
 """
 class Config:
     """Configurazione percorsi risorse plugin"""
-    XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
+    XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/zapScan/zap.xsd")
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -365,13 +365,13 @@ def get_poc_string(alert):
 
          
 # Route name and tools description
-route_name = "reducer"
+route_name = "zapScan"
 tools_description = [
     {
         "Icon file": "icon.png",
-        "Icon URL": "https://i.ibb.co/DVWwGcS/redcheck.png",#### cambiare
-        "Official name": "Reducer",
-        "Short name": "reducer",
+        "Icon URL": "",#### cambiare
+        "Official name": "zapScan",
+        "Short name": "zapScan",
         "Description": "Remove unnecessary warnings",
         "URL": "",
         "Plugin author": "@alexfr3"
@@ -388,25 +388,10 @@ class ToolArguments(FlaskForm):
         validators=[],
         _meta={"display_row": 1, "display_column": 1, "file_extensions": ".xml"}
     )
-    #StringField cambiato in hidden perchè è automatico
-    '''Posso rimuoverlo? Non lo metti a mano l'indirizzo ip
-    hostnames_file = HiddenField(
-            label='hostnames_file',
-            description='or take IPs from this field',
-            default='127.0.0.1\n',
-            validators=[],
-            _meta={"display_row": 3, "display_column": 1, "multiline": False}
-        )
-    auto_resolve = BooleanField(label='auto_resolve',
-                                description="Automatic resolve ip from PCF server",
-                                default=True,
-                                validators=[],
-                                _meta={"display_row": 2, "display_column": 1})
-    '''
     hosts_description = StringField(
             label='hosts_description',
             description='Host description',
-            default='Added from Reducer',
+            default='Added from ZapImport',
             validators=[],
             _meta={"display_row": 1, "display_column": 2, "multiline": False}
         )
@@ -414,7 +399,7 @@ class ToolArguments(FlaskForm):
     hostnames_description = StringField(
         label='hostnames_description',
         description='Hostname description',
-        default='Added from Reducer',
+        default='Added from ZapImport',
         validators=[],
         _meta={"display_row": 3, "display_column": 2, "multiline": False}
     )
@@ -492,7 +477,7 @@ def process_request(
                     hostname_id = current_hostname[0]['id']
                 else:   
                     hostname_id = db.insert_hostname(host_id, host,
-                                                    input_dict['hostnames_description'],
+                                                    input_dict['hosts_description'],
                                                     current_user['id'])
             '''-----------------------------------------------------------------'''
             # Gestione porta
@@ -514,11 +499,11 @@ def process_request(
                 db.insert_host_port(
                     host_id, 
                     port, 
-                    is_tcp, 
-                    input_dict['hosts_description'], 
-                    "Porta rilevata dall'analisi XML di ZAP", 
-                    str(current_user['id']), 
-                    str(current_project['id'])
+                    is_tcp,
+                    '', 
+                    description=input_dict['hosts_description'], 
+                    user_id=str(current_user['id']), 
+                    project_id=str(current_project['id'])
                 )
                 
 
