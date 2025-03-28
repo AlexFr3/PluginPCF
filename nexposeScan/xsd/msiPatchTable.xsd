@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!--========================================================================
++   COPYRIGHT (C) 2023, Rapid7 LLC, Boston, MA, USA.
++   All rights reserved. This material contains unpublished, copyrighted
++   work including confidential and proprietary information of Rapid7.
++=========================================================================-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+    <xsd:element name="MsiPatchTable" type="msiPatchTable_element"/>
+
+    <xsd:complexType name="msiPatchTable_element">
+        <xsd:sequence>
+            <xsd:element name="MsiPatch" type="msiPatch_element" minOccurs="1" maxOccurs="unbounded"/>
+        </xsd:sequence>
+        <xsd:attribute name="updated" type="xsd:string" use="required"/>
+    </xsd:complexType>
+
+    <xsd:complexType name="msiPatch_element">
+        <xsd:sequence>
+            <xsd:element name="SequenceData" type="sequenceData_element" minOccurs="1" maxOccurs="unbounded"/>
+        </xsd:sequence>
+        <xsd:attribute name ="PatchGUID" type="xsd:string" use="required"/>
+    </xsd:complexType>
+
+    <xsd:complexType name="sequenceData_element">
+        <xsd:attribute name="PatchFamily" type="xsd:string" use="required"/>
+        <xsd:attribute name="Sequence" type="xsd:string" use="required"/>
+    </xsd:complexType>
+
+</xsd:schema>

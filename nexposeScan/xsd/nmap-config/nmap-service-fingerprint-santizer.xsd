@@ -1,0 +1,46 @@
+<?xml version="1.0"?>
+<!--========================================================================
+   COPYRIGHT (C) 2020, Rapid7 LLC, Boston, MA, USA.
+   All rights reserved. This material contains unpublished, copyrighted
+   work including confidential and proprietary information of Rapid7.
+=========================================================================-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+	<xsd:element name="NmapServiceFingerprints">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element ref="fingerprint" maxOccurs="unbounded" minOccurs="1"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="matchers">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element ref="match" maxOccurs="unbounded" minOccurs="1"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="match">
+    <xsd:complexType>
+      <xsd:simpleContent>
+        <xsd:extension base="xsd:string">
+          <xsd:attribute type="xsd:string" name="type" use="required"/>
+        </xsd:extension>
+      </xsd:simpleContent>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="product" type="xsd:string"/>
+  <xsd:element name="vendor" type="xsd:string"/>
+
+  <xsd:element name="fingerprint">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element ref="matchers"/>
+        <xsd:element ref="product" minOccurs="0" maxOccurs="unbounded"/>
+        <xsd:element ref="vendor" minOccurs="0" maxOccurs="unbounded"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

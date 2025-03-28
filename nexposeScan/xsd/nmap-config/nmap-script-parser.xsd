@@ -1,0 +1,137 @@
+<?xml version="1.0"?>
+<!--========================================================================
++   COPYRIGHT (C) 2020, Rapid7 LLC, Boston, MA, USA.
++   All rights reserved. This material contains unpublished, copyrighted
++   work including confidential and proprietary information of Rapid7.
++=========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <xs:element name="parser" type="parserType"/>
+
+  <xs:complexType name="expectedEntryType">
+    <xs:simpleContent>
+      <xs:extension base="xs:string">
+        <xs:attribute type="xs:string" name="key" use="required"/>
+      </xs:extension>
+    </xs:simpleContent>
+  </xs:complexType>
+
+  <xs:complexType name="configResultType">
+    <xs:sequence>
+      <xs:element type="expectedEntryType" name="expectedEntry" maxOccurs="unbounded" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="vulnerabilityResultType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="expectedProof"/>
+      <xs:element type="xs:string" name="expectedStatus"/>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="id"/>
+  </xs:complexType>
+
+  <xs:complexType name="fingerprintResultType">
+    <xs:choice maxOccurs="unbounded">
+      <xs:element type="xs:string" name="certainty" minOccurs="0"/>
+      <xs:element type="xs:string" name="vendor" minOccurs="0"/>
+      <xs:element type="xs:string" name="swClass" minOccurs="0"/>
+      <xs:element type="xs:string" name="family" minOccurs="0"/>
+      <xs:element type="xs:string" name="deviceClass" minOccurs="0"/>
+      <xs:element type="xs:string" name="product" minOccurs="0"/>
+      <xs:element type="xs:string" name="installedLocation" minOccurs="0"/>
+      <xs:element type="xs:string" name="arch" minOccurs="0"/>
+      <xs:element type="xs:string" name="version" minOccurs="0"/>
+      <xs:element type="xs:string" name="description" minOccurs="0"/>
+      <xs:element type="xs:string" name="protocol" minOccurs="0"/>
+    </xs:choice>
+    <xs:attribute type="xs:string" name="type"/>
+  </xs:complexType>
+
+  <xs:complexType name="exampleType">
+    <xs:choice maxOccurs="unbounded">
+      <xs:element type="configResultType" name="configResult" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element type="vulnerabilityResultType" name="vulnerabilityResult" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element type="fingerprintResultType" name="fingerprintResult" minOccurs="0" maxOccurs="unbounded"/>
+    </xs:choice>
+    <xs:attribute type="xs:string" name="file"/>
+  </xs:complexType>
+
+  <xs:complexType name="entryType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="pattern" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="xpath" use="optional"/>
+    <xs:attribute type="xs:string" name="key" use="required"/>
+    <xs:attribute type="xs:string" name="value" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="fingerprintEntryType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="pattern" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="xpath" use="optional"/>
+    <xs:attribute type="xs:string" name="value" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="configType">
+    <xs:sequence>
+      <xs:element type="entryType" name="entry" maxOccurs="unbounded" minOccurs="1"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="statusType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="pattern" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="xpath" use="optional"/>
+    <xs:attribute type="xs:string" name="value" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="proofType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="pattern" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="xpath" use="optional"/>
+    <xs:attribute type="xs:string" name="value" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="vulnerabilityType">
+    <xs:sequence>
+      <xs:element type="statusType" name="status" minOccurs="1"/>
+      <xs:element type="proofType" name="proof" minOccurs="1"/>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="id" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="fingerprintType">
+    <xs:choice maxOccurs="unbounded">
+      <xs:element type="fingerprintEntryType" name="certainty" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="vendor" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="swClass" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="family" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="deviceClass" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="product" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="installedLocation" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="arch" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="version" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="description" minOccurs="0"/>
+      <xs:element type="fingerprintEntryType" name="protocol" minOccurs="0"/>
+    </xs:choice>
+    <xs:attribute type="xs:string" name="type"/>
+  </xs:complexType>
+
+  <xs:complexType name="parserType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="description" minOccurs="1"/>
+      <xs:element type="exampleType" name="example" minOccurs="1"/>
+      <xs:element type="configType" name="config" maxOccurs="unbounded" minOccurs="0"/>
+      <xs:element type="vulnerabilityType" name="vulnerability" maxOccurs="unbounded" minOccurs="0"/>
+      <xs:element type="fingerprintType" name="fingerprint" maxOccurs="unbounded" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute type="xs:string" name="script_id" use="required"/>
+    <xs:attribute type="xs:integer" name="min_framework" use="required"/>
+    <xs:attribute type="xs:integer" name="max_framework" use="optional"/>
+    <xs:attribute type="xs:string" name="save_output" use="optional"/>
+    <xs:attribute type="xs:string" name="dependencies" use="optional"/>
+  </xs:complexType>
+</xs:schema>

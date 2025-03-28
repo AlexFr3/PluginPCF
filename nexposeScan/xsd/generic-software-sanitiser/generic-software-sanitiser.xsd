@@ -1,0 +1,99 @@
+<?xml version="1.0"?>
+<!--========================================================================
+   COPYRIGHT (C) 2020, Rapid7 LLC, Boston, MA, USA.
+   All rights reserved. This material contains unpublished, copyrighted
+   work including confidential and proprietary information of Rapid7.
+=========================================================================-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <xsd:element name="GenericSoftwareFingerprint">
+        <xsd:complexType>
+            <xsd:sequence>
+                <xsd:element ref="fingerprint" maxOccurs="unbounded" minOccurs="1"/>
+            </xsd:sequence>
+        </xsd:complexType>
+    </xsd:element>
+
+    <xsd:complexType name="param_element">
+        <xsd:attribute name="name" type="xsd:string" use="required"/>
+        <xsd:attribute name="pos" type="xsd:integer" use="required"/>
+        <xsd:attribute name="value" type="xsd:string" use="optional"/>
+    </xsd:complexType>
+
+    <xsd:element name="entry">
+        <xsd:complexType>
+            <xsd:simpleContent>
+                <xsd:extension base="xsd:string">
+                    <xsd:attribute name="source" use="required"/>
+                    <xsd:attribute name="software.vendor" use="optional"/>
+                    <xsd:attribute name="software.product" use="optional"/>
+                    <xsd:attribute name="software.family" use="optional"/>
+                    <xsd:attribute name="software.class" use="optional"/>
+                    <xsd:attribute name="software.version" use="optional"/>
+                </xsd:extension>
+            </xsd:simpleContent>
+        </xsd:complexType>
+    </xsd:element>
+
+    <xsd:element name="example">
+        <xsd:complexType>
+            <xsd:sequence>
+                <xsd:element ref="entry" maxOccurs="unbounded" minOccurs="1" />
+            </xsd:sequence>
+            <xsd:attribute name="negative" type="xsd:boolean" use="optional"/>
+        </xsd:complexType>
+    </xsd:element>
+
+    <xsd:element name="examples">
+        <xsd:complexType>
+            <xsd:sequence>
+                <xsd:element ref="example" maxOccurs="unbounded" minOccurs="1" />
+            </xsd:sequence>
+        </xsd:complexType>
+    </xsd:element>
+    
+    <xsd:element name="param">
+        <xsd:complexType>
+            <xsd:simpleContent>
+                <xsd:extension base="xsd:string">
+                    <xsd:attribute type="xsd:string" name="name" use="required"/>
+                    <xsd:attribute type="xsd:string" name="pos" use="required"/>
+                    <xsd:attribute type="xsd:string" name="value" use="optional"/>
+                </xsd:extension>
+            </xsd:simpleContent>
+        </xsd:complexType>
+    </xsd:element>
+
+    <xsd:element name="pattern">
+        <xsd:complexType>
+            <xsd:simpleContent>
+                <xsd:extension base="xsd:string">
+                    <xsd:attribute type="xsd:string" name="source" use="required"/>
+                    <xsd:attribute type="xsd:string" name="regex" use="required"/>
+                </xsd:extension>
+            </xsd:simpleContent>
+        </xsd:complexType>
+    </xsd:element>
+
+    <xsd:element name="version">
+        <xsd:complexType>
+            <xsd:simpleContent>
+                <xsd:extension base="xsd:string">
+                    <xsd:attribute type="xsd:string" name="version" use="required"/>
+                    <xsd:attribute type="xsd:string" name="greaterOrEqual" use="required"/>
+                </xsd:extension>
+            </xsd:simpleContent>
+        </xsd:complexType>
+    </xsd:element>
+
+    <xsd:element name="fingerprint">
+        <xsd:complexType>
+            <xsd:sequence>
+                <xsd:element ref="pattern" minOccurs="1" maxOccurs="unbounded"/>
+                <xsd:element ref="examples" minOccurs="1" maxOccurs="1" />
+                <xsd:element ref="version" minOccurs="0" maxOccurs="1"/>
+                <xsd:element ref="param" minOccurs="1" maxOccurs="unbounded"/>
+            </xsd:sequence>
+            <xsd:attribute type="xsd:string" name="os" use="required"/>
+        </xsd:complexType>
+    </xsd:element>
+</xsd:schema>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================
+   COPYRIGHT (C) 2018, Rapid7 LLC, Boston, MA, USA.
+   All rights reserved. This material contains unpublished, copyrighted
+   work including confidential and proprietary information of Rapid7.
+=========================================================================-->
+<xs:schema version="1.0" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+   <xs:element name="supersedence" type="Supersedence" />
+
+      <xs:complexType name="Supersedence">
+         <xs:sequence>
+            <xs:element name="component" type="Component" minOccurs="1" />
+         </xs:sequence>
+         <xs:attribute name="updated" type="xs:string" use="required" />
+      </xs:complexType>
+
+      <xs:complexType name="Component">
+         <xs:sequence>
+            <xs:element name="vulnCheck" type="VulnCheck" minOccurs="0" maxOccurs="unbounded"/>
+         </xs:sequence>
+		   <xs:attribute name="name" type="xs:string" use="required" />
+      </xs:complexType>
+
+      <xs:complexType name="VulnCheck">
+         <xs:sequence>
+            <xs:element name="supersededBy" type="SupersededBy" minOccurs="1" maxOccurs="unbounded" />
+         </xs:sequence>
+		   <xs:attribute name="id" type="xs:string" use="required" />
+      </xs:complexType>
+
+      <xs:complexType name="SupersededBy">
+         <xs:attribute name="id" type="xs:string" use="required" />
+      </xs:complexType>
+
+</xs:schema>
+

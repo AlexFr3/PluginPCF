@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<!--========================================================================
+   COPYRIGHT (C) 2018, Rapid7 LLC, Boston, MA, USA.
+   All rights reserved. This material contains unpublished, copyrighted
+   work including confidential and proprietary information of Rapid7.
+=========================================================================-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+  <xsd:simpleType name="test_type">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="equals"/>
+      <xsd:enumeration value="notEquals"/>
+      <xsd:enumeration value="keyIsPresent"/>
+      <xsd:enumeration value="keyNotPresent"/>
+      <xsd:enumeration value="valueIsPresent"/>
+      <xsd:enumeration value="valueNotPresent"/>
+      <xsd:enumeration value="match"/>
+      <xsd:enumeration value="find"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+</xsd:schema>

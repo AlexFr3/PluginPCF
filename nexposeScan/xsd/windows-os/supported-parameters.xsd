@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!--========================================================================
+   COPYRIGHT (C) 2018, Rapid7 LLC, Boston, MA, USA.
+   All rights reserved. This material contains unpublished, copyrighted
+   work including confidential and proprietary information of Rapid7.
+=========================================================================-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+  <xsd:simpleType name="param_type">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="os.version"/>
+      <xsd:enumeration value="os.product"/>
+      <xsd:enumeration value="os.vendor"/>
+      <xsd:enumeration value="os.family"/>
+      <xsd:enumeration value="os.class"/>
+      <xsd:enumeration value="os.arch"/>
+      <xsd:enumeration value="os.description"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+</xsd:schema>

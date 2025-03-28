@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!--========================================================================
++   COPYRIGHT (C) 2018, Rapid7 LLC, Boston, MA, USA.
++   All rights reserved. This material contains unpublished, copyrighted
++   work including confidential and proprietary information of Rapid7.
++=========================================================================-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+ <xsd:include schemaLocation="xpath_webapps_shared.xsd"/>
+
+ <xsd:element name="fingerprints">
+  <xsd:complexType>
+   <xsd:sequence>
+    <xsd:element name="fingerprint" type="fingerprint_element" maxOccurs="unbounded"/>
+   </xsd:sequence>
+  </xsd:complexType>
+ </xsd:element>
+
+ <xsd:complexType name="fingerprint_element">
+  <xsd:sequence>
+   <xsd:element name="example" type="example_element" minOccurs="0" maxOccurs="unbounded"/>
+   <xsd:element name="get" type="get_element" minOccurs="1" maxOccurs="unbounded"/>
+   <xsd:element name="response" type="response_element" minOccurs="0" maxOccurs="unbounded"/>
+   <xsd:element name="test" type="test_element" minOccurs="0" maxOccurs="unbounded"/>
+  </xsd:sequence>
+  <xsd:attribute name="min_framework" type="xsd:integer" use="optional"/>
+  <xsd:attribute name="max_framework" type="xsd:integer" use="optional"/>
+  <xsd:attribute name="nonXpath" type="nonxpath_attribute" use="optional"/>
+  <xsd:attribute name="type" type="type_attribute" use="optional"/>
+  <xsd:attribute name="authType" type="auth_attribute" use="required"/>
+ </xsd:complexType>
+</xsd:schema>

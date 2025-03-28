@@ -1,0 +1,157 @@
+<?xml version="1.0"?>
+<!--========================================================================
++   COPYRIGHT (C) 2018, Rapid7 LLC, Boston, MA, USA.
++   All rights reserved. This material contains unpublished, copyrighted
++   work including confidential and proprietary information of Rapid7.
++=========================================================================-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+
+ <xsd:complexType name="example_element">
+  <xsd:attribute name="file" type="xsd:string" use="required"/>
+  <xsd:attribute name="unique" type="xsd:boolean" use="required"/>
+  <xsd:attribute name="product" type="xsd:string" use="required"/>
+  <xsd:attribute name="family" type="xsd:string" use="optional"/>
+  <xsd:attribute name="vendor" type="xsd:string" use="optional"/>
+  <xsd:attribute name="version" type="xsd:string" use="optional"/>
+  <xsd:attribute name="class" type="xsd:string" use="optional"/>
+ </xsd:complexType>
+
+ <xsd:complexType name="get_element">
+  <xsd:sequence>
+   <xsd:element name="test" type="test_element" minOccurs="0" maxOccurs="unbounded"/>
+  </xsd:sequence>
+  <xsd:attribute name="path" type="xsd:anyURI" use="required"/>
+ </xsd:complexType>
+
+ <xsd:complexType name="test_element">
+  <xsd:sequence>
+   <xsd:element name="param" type="param_element" minOccurs="0" maxOccurs="unbounded"/>
+   <xsd:element name="var" type="var_element" minOccurs="0" maxOccurs="unbounded"/>
+  </xsd:sequence>
+  <xsd:attribute name ="jpointer" type="xsd:string" use="optional"/>
+  <xsd:attribute name ="xpath" type="xsd:string" use="optional"/>
+  <xsd:attribute name ="regex" type="xsd:string" use="required"/>
+ </xsd:complexType>
+
+ <xsd:complexType name="param_element">
+  <xsd:attribute name="pos" type="pos_attribute" use="required"/>
+   <xsd:attribute name="name" type="name_attribute" use="optional"/>
+   <xsd:attribute name="value" type="xsd:string" use="optional"/>
+   <xsd:attribute name="format" type="xsd:string" use="optional"/>
+ </xsd:complexType>
+
+ <xsd:complexType name="var_element">
+  <xsd:attribute name="pos" type="pos_attribute" use="required"/>
+  <xsd:attribute name="name" type="xsd:string" use="required"/>
+  <xsd:attribute name="format" type="xsd:string" use="optional"/>
+ </xsd:complexType>
+
+ <xsd:complexType name="response_element">
+  <xsd:attribute name="code" type="response_code_attribute" use="required"/>
+ </xsd:complexType>
+
+ <xsd:simpleType name="nonxpath_attribute">
+  <xsd:restriction base="xsd:string">
+   <xsd:enumeration value="true"/>
+  </xsd:restriction>
+ </xsd:simpleType>
+
+ <xsd:simpleType name="type_attribute">
+  <xsd:restriction base="xsd:string">
+   <xsd:enumeration value="Service"/>
+   <xsd:enumeration value="Software"/>
+   <xsd:enumeration value="Component"/>
+   <xsd:enumeration value="System"/>
+  </xsd:restriction>
+ </xsd:simpleType>
+
+ <xsd:simpleType name="auth_attribute">
+  <xsd:restriction base="xsd:string">
+   <xsd:enumeration value="HTML_Form"/>
+   <xsd:enumeration value="HTTP_Header"/>
+   <xsd:enumeration value="BASIC_HTTP"/>
+  </xsd:restriction>
+ </xsd:simpleType>
+
+ <xsd:simpleType name="pos_attribute">
+  <xsd:restriction base="xsd:string">
+   <xsd:pattern value="([0-9],?)+"/>
+  </xsd:restriction>
+ </xsd:simpleType>
+
+ <xsd:simpleType name="name_attribute">
+  <xsd:restriction base="xsd:string">
+   <xsd:enumeration value="version"/>
+   <xsd:enumeration value="vendor"/>
+   <xsd:enumeration value="product"/>
+   <xsd:enumeration value="family"/>
+   <xsd:enumeration value="class"/>
+  </xsd:restriction>
+ </xsd:simpleType>
+
+ <xsd:simpleType name="response_code_attribute">
+  <xsd:restriction base="xsd:string">
+   <xsd:enumeration value="100"/>
+   <xsd:enumeration value="101"/>
+   <xsd:enumeration value="102"/>
+   <xsd:enumeration value="103"/>
+   <xsd:enumeration value="200"/>
+   <xsd:enumeration value="201"/>
+   <xsd:enumeration value="202"/>
+   <xsd:enumeration value="203"/>
+   <xsd:enumeration value="204"/>
+   <xsd:enumeration value="205"/>
+   <xsd:enumeration value="206"/>
+   <xsd:enumeration value="207"/>
+   <xsd:enumeration value="208"/>
+   <xsd:enumeration value="226"/>
+   <xsd:enumeration value="300"/>
+   <xsd:enumeration value="301"/>
+   <xsd:enumeration value="302"/>
+   <xsd:enumeration value="303"/>
+   <xsd:enumeration value="304"/>
+   <xsd:enumeration value="305"/>
+   <xsd:enumeration value="306"/>
+   <xsd:enumeration value="307"/>
+   <xsd:enumeration value="308"/>
+   <xsd:enumeration value="400"/>
+   <xsd:enumeration value="401"/>
+   <xsd:enumeration value="402"/>
+   <xsd:enumeration value="403"/>
+   <xsd:enumeration value="404"/>
+   <xsd:enumeration value="405"/>
+   <xsd:enumeration value="406"/>
+   <xsd:enumeration value="407"/>
+   <xsd:enumeration value="408"/>
+   <xsd:enumeration value="409"/>
+   <xsd:enumeration value="410"/>
+   <xsd:enumeration value="411"/>
+   <xsd:enumeration value="412"/>
+   <xsd:enumeration value="413"/>
+   <xsd:enumeration value="414"/>
+   <xsd:enumeration value="415"/>
+   <xsd:enumeration value="416"/>
+   <xsd:enumeration value="417"/>
+   <xsd:enumeration value="418"/>
+   <xsd:enumeration value="421"/>
+   <xsd:enumeration value="422"/>
+   <xsd:enumeration value="423"/>
+   <xsd:enumeration value="424"/>
+   <xsd:enumeration value="426"/>
+   <xsd:enumeration value="429"/>
+   <xsd:enumeration value="431"/>
+   <xsd:enumeration value="451"/>
+   <xsd:enumeration value="500"/>
+   <xsd:enumeration value="501"/>
+   <xsd:enumeration value="502"/>
+   <xsd:enumeration value="503"/>
+   <xsd:enumeration value="504"/>
+   <xsd:enumeration value="505"/>
+   <xsd:enumeration value="506"/>
+   <xsd:enumeration value="507"/>
+   <xsd:enumeration value="508"/>
+   <xsd:enumeration value="510"/>
+   <xsd:enumeration value="511"/>
+  </xsd:restriction>
+ </xsd:simpleType>
+</xsd:schema>
