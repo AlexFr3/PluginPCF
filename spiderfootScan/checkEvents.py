@@ -1,6 +1,8 @@
 import json
 import os
-
+"""
+Stampa tutti gli eventi che non sono presenti nel JSON
+"""
 print(os.getcwd())
 
 # Carica il file JSON e crea un set di eventi (tutti in UPPERCASE e puliti)
