@@ -1,7 +1,9 @@
 import os
 import ast
 import re
-
+"""
+File da avviare nella cartella di spiderfoot(modules)
+"""
 def extract_produced_events_function(file_path):
     """Legge un file Python e estrae il contenuto tra parentesi quadre della funzione producedEvents(self)."""
     with open(file_path, "r", encoding="utf-8") as f:
