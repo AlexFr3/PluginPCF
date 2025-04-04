@@ -14,6 +14,10 @@ from system.db import Database
 
 import socket
 import json
+import os
+class Config:
+    """Configurazione percorsi risorse plugin"""
+    JSON_EVENTS = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/spiderfootScan/event_type.json")
 def split_ip_port(address: str):
     """
     Separa l'indirizzo IP dalla porta, se presente.
@@ -46,34 +50,6 @@ def split_ip_port(address: str):
     # Nessuna porta specificata
     return address, None
 
-def is_valid_ip_port(address: str) -> bool:
-    """
-    Controlla se la stringa è un indirizzo IP valido con, eventualmente, una porta valida.
-    Restituisce True se l'indirizzo è valido, altrimenti False.
-    
-    Esempi:
-      - "192.168.1.1:8080" -> True
-      - "192.168.1.1" -> True
-      - "192.168.1.300:80" -> False
-      - "abc" -> False
-    """
-    ip, port = split_ip_port(address)
-    try:
-        # Prova a validare l'indirizzo IP
-        ipaddress.ip_address(ip)
-    except ValueError:
-        return False
-
-    # Se è presente una porta, controlla che sia un numero valido
-    if port is not None:
-        try:
-            port_num = int(port)
-            if port_num < 1 or port_num > 65535:
-                return False
-        except ValueError:
-            return False
-
-    return True
 # Route name and tools description
 route_name = "spiderfootScan"
 tools_description = [
@@ -132,33 +108,39 @@ def process_request(
         file_content = file_bin_content.decode('charmap')
         try:
             json_content = json.loads(file_content)
-            
-            
+            with open(Config.JSON_EVENTS, "r", encoding="utf-8") as f:
+                event_content = json.loads(f.read())
             for entry in json_content:
                 host = entry['scan_target']
                 event_type = entry['event_type']
+                
+                if event_type in event_content['Domain']:
+                    print(f"Event type {event_type} is in event_content['Domain']: {event_content['Domain']}")
+                else:
+                    print(f"Event type {event_type} is NOT in event_content['Domain']: {event_content['Domain']}")
+                    break
+
                 module = entry['module']
                 source_data = entry['source_data']
                 false_positive = entry['false_positive']
                 last_seen = entry['last_seen']
                 scan_name = entry['scan_name']
                 data = entry['data']
-                ip_obj = None
-                port = None
-                '''if is_valid_ip_port(data):
-                    #Gestione porta e host
-                    host,port=split_ip_port(data)
-                    ip_obj = socket.gethostbyname(host)
-                else:'''
+                ip_obj = None 
+                port = None # la porta in questo caso non viene gestita
+               
                 if host:
                     try:
-                        #In questo caso prende scan_target come host
+                        #Prende scan_target come host
                         ipaddress.ip_address(host)
                         ip_obj = socket.gethostbyname(host)
                         is_ip = True
                     except ValueError:
                         is_ip = False
-                    
+                        
+                #se l'ip non esiste salto al prossimo entry
+                if is_ip == False:
+                    continue    
                 print(f"IP: {ip_obj}") 
                 # Gestione porta - Se non fornita da spiderfoot  
                 if port is None:
