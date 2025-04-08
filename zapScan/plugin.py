@@ -609,10 +609,8 @@ def process_request(
                     # Se esiste già un PoC per l'issue, aggiorna il PoC esistente
                     poc_id = pocs[0]['id']
                     poc_dati = pocs[0]['base64']  # è una stringa base64
-                    # Decodifica:
                     decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
 
-                    # Ora puoi confrontarlo con un'altra stringa
                     if decoded_poc == poc:
                         print("I PoC sono uguali!")
                     else:
