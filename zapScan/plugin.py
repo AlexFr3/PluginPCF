@@ -607,7 +607,6 @@ def process_request(
                 pocs=db.select_issue_pocs(issue_id)
                 if pocs:
                     # Se esiste già un PoC per l'issue, aggiorna il PoC esistente
-                    poc_id = pocs[0]['id']
                     poc_dati = pocs[0]['base64']  # è una stringa base64
                     decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
 
