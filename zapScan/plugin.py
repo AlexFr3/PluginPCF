@@ -49,7 +49,6 @@ def validate_xml(xml_content, xsd_file):
         schema = etree.XMLSchema(schema_root)
         xml_doc = etree.fromstring(xml_content.encode('utf-8'))
         schema.assertValid(xml_doc)
-        print("Il file XML è valido rispetto allo schema XSD.")
         return True
     except etree.XMLSyntaxError as e:
         logging.error(f"Errore di sintassi XML: {e}")
@@ -332,11 +331,9 @@ def update_services_dict(port_id, hostname_id, old_services):
 
     # Controlla se l'hostname_id è già presente
     if host_id not in existing_uuids:
-        print(f"Aggiunta nuovo hostname {host_id} alla porta {port_key}")
+        #print(f"Aggiunta nuovo hostname {host_id} alla porta {port_key}")
         old_services[port_key].append(host_id)
-    else:
-        print(f"Hostname {host_id} già presente per la porta {port_key}")
-
+    
     return old_services
 def get_poc_string(alert):
     """
@@ -428,7 +425,6 @@ def process_request(
                 continue  # Evita file vuoti
 
             xml_data = bin_data.decode("utf-8")
-            print("File XML ricevuto!")
 
             if not validate_xml(xml_data, xsd_file):
                 return "XML validation failed!"
@@ -441,11 +437,9 @@ def process_request(
                 is_ip = False
 
             ip_obj = socket.gethostbyname(host)
-            print(f"IP: {ip_obj}")
             
             try:
                 print("--------------------------------------------------------")
-                print(f"current_project:{current_project['id']}")
                 
                 current_host = db.select_project_host_by_ip(
                     project_id=current_project['id'],
@@ -464,7 +458,6 @@ def process_request(
                         threats=[],  
                         os=''        
                     )
-                    print(f"Host: {host_id}")
                     
             except Exception as e:
                 logging.error(f"Errore nella selezione dell'host: {str(e)}")
@@ -495,7 +488,6 @@ def process_request(
             is_tcp = True
 
             # Verifica se la porta esiste nel DB
-            print("-" * 40)
             existing_port = db.select_host_port(host_id, port, is_tcp)
             if not existing_port:
                 db.insert_host_port(
@@ -507,12 +499,8 @@ def process_request(
                     user_id=str(current_user['id']), 
                     project_id=str(current_project['id'])
                 )
-                
-
             
             existing_port = db.select_host_port(host_id, port, is_tcp)
-            print(f"Porta: {existing_port}")
-            print("-" * 40)
             
             port_id = existing_port[0]['id']
             
@@ -565,27 +553,19 @@ def process_request(
                 if name in issue_names:
                     issue_id = issue_names[name]['id']
                     old_services = issue_names[name]['services']
-                    print("Old services in if: "+str(old_services))
-                    print(f"L'errore : {name} ; esiste già con ID: {issue_id}")
-                    print("*" * 40)
-
+                    
                     new_services = update_services_dict(
                         port_id, 
                         hostname_id,
                         old_services
                     )
-                    print("New services creati: "+str(new_services))
                     # Aggiorna solo se ci sono modifiche
                     if new_services != old_services:
-                        print("AGGIORNAMENTO SERVIZI")
-                        print("Update services: "+str(new_services))
                         db.update_issue_services(issue_id, new_services)
-                        print("FINE AGGIORNAMENTO SERVIZI")
-                    print("*" * 40)
                     
                 else:
+                    
                     services = create_services_dict(port_id, hostname_id)
-                    #print(services)
                     issue_id = db.insert_new_issue_no_dublicate(
                         name,
                         desc,
@@ -610,10 +590,7 @@ def process_request(
                     poc_dati = pocs[0]['base64']  # è una stringa base64
                     decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
 
-                    if decoded_poc == poc:
-                        print("I PoC sono uguali!")
-                    else:
-                        print("I PoC sono differenti.")
+                    if decoded_poc != poc:
                         db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
                                   poc_id='random', storage='database', data=dati)
                 else:
