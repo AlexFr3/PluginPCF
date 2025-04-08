@@ -16,6 +16,8 @@ from lxml import etree
 import os
 import socket
 import json
+import base64
+
 """
 ZAP Report Importer Plugin
 
@@ -600,11 +602,25 @@ def process_request(
                         risks=confidenceRisk_toText(risk,confidence),
                         references=references
                         )
-                
                 poc = str(poc_string)
                 dati = poc.encode('utf-8')
                 pocs=db.select_issue_pocs(issue_id)
-                db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
+                if pocs:
+                    # Se esiste già un PoC per l'issue, aggiorna il PoC esistente
+                    poc_id = pocs[0]['id']
+                    poc_dati = pocs[0]['base64']  # è una stringa base64
+                    # Decodifica:
+                    decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
+
+                    # Ora puoi confrontarlo con un'altra stringa
+                    if decoded_poc == poc:
+                        print("I PoC sono uguali!")
+                    else:
+                        print("I PoC sono differenti.")
+                        db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
+                                  poc_id='random', storage='database', data=dati)
+                else:
+                    db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
                                   poc_id='random', storage='database', data=dati)
                 
                 
