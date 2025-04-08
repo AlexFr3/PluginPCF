@@ -37,7 +37,7 @@ services = {
 """
 class Config:
     """Configurazione percorsi risorse plugin"""
-    XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/reducer/zap.xsd")
+    XSD_PATH = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/zapScan/zap.xsd")
 def validate_xml(xml_content, xsd_file):
     """Valida un file XML rispetto ad uno schema XSD"""
     try:
@@ -365,13 +365,13 @@ def get_poc_string(alert):
 
          
 # Route name and tools description
-route_name = "reducer"
+route_name = "zapScan"
 tools_description = [
     {
         "Icon file": "icon.png",
         "Icon URL": "",#### cambiare
-        "Official name": "Reducer",
-        "Short name": "reducer",
+        "Official name": "zapScan",
+        "Short name": "zapScan",
         "Description": "Remove unnecessary warnings",
         "URL": "",
         "Plugin author": "@alexfr3"
@@ -391,7 +391,7 @@ class ToolArguments(FlaskForm):
     hosts_description = StringField(
             label='hosts_description',
             description='Host description',
-            default='Added from Reducer',
+            default='Added from zapScan',
             validators=[],
             _meta={"display_row": 1, "display_column": 2, "multiline": False}
         )
@@ -399,7 +399,7 @@ class ToolArguments(FlaskForm):
     hostnames_description = StringField(
         label='hostnames_description',
         description='Hostname description',
-        default='Added from Reducer',
+        default='Added from zapScan',
         validators=[],
         _meta={"display_row": 3, "display_column": 2, "multiline": False}
     )
