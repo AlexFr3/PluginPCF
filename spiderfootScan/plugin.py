@@ -15,6 +15,8 @@ from system.db import Database
 import socket
 import json
 import os
+import base64
+
 class Config:
     """Configurazione percorsi risorse plugin"""
     JSON_EVENTS = os.path.join(os.getcwd(), "routes/ui/tools_addons/import_plugins/spiderfootScan/event_type.json")
@@ -24,6 +26,7 @@ def split_ip_port(address: str):
     Supporta:
       - IPv4 con formato "192.168.1.1:8080"
       - IPv6 con formato "[2001:db8::1]:8080"
+      - IPv6 senza porta, esempio "2404:6800:4003:c00::1a"
     Se non è presente la porta, restituisce (indirizzo, None).
     """
     # Gestione degli indirizzi IPv6 con porta, nel formato [IPv6]:porta
@@ -39,8 +42,15 @@ def split_ip_port(address: str):
                 port = None
             return ip, port
 
-    # Per gli indirizzi IPv4 o IPv6 senza parentesi quadre
-    # Se c'è almeno un ':' e l'ultima parte è numerica, supponiamo che sia la porta
+    # Se l'intera stringa è un indirizzo valido (IPv4 o IPv6), restituiscilo senza porta
+    try:
+        import ipaddress
+        ipaddress.ip_address(address)  # Se non solleva eccezione, l'indirizzo è valido
+        return address, None
+    except ValueError:
+        pass  # L'indirizzo non è interamente valido, potrebbe contenere anche la porta
+
+    # Per gli indirizzi IPv4 con porta (e casi non validi come IPv6 senza parentesi quadre)
     if ':' in address:
         parts = address.rsplit(':', 1)
         if len(parts) == 2 and parts[1].isdigit():
@@ -49,6 +59,7 @@ def split_ip_port(address: str):
 
     # Nessuna porta specificata
     return address, None
+
 def create_services_dict(port_id, hostname_id):
     """
     Crea un dizionario services nel formato:
@@ -120,25 +131,25 @@ def update_services_dict(port_id, hostname_id, old_services):
     return old_services
 def split_data(data: str) -> list:
     """
-    Suddivide la stringa WHOIS in righe pulite, rimuovendo spazi superflui e separatori.
+    Suddivide la stringa WHOIS in righe pulite, rimuovendo spazi superflui
+    e tutti i caratteri '%' da ogni riga.
     
     Args:
-        data (str): Stringa grezza dal campo 'data' (es. "Domain Name: 1E100.NET\r\nRegistry...")
+        data (str): Stringa grezza dal campo 'data'.
     
     Returns:
-        list: Lista di stringhe formattate (es. ["Domain Name: 1E100.NET", "Registry Domain ID: ..."])
+        list: Lista di stringhe formattate.
     """
-    # Split iniziale sulle nuove righe
     lines = data.strip().split('\r\n')
-    
-    # Pulizia: rimuove spazi iniziali/finali e filtra righe vuote
-    cleaned_lines = [
-        line.strip()
-        for line in lines
-        if line.strip()  # Ignora righe vuote dopo lo strip
-    ]
-    
+
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip().replace('%', '')
+        if line:  # Ignora righe vuote dopo la pulizia
+            cleaned_lines.append(line)
+
     return cleaned_lines
+
 def get_poc_string(entry):
     """
     Genera una stringa di Proof of Concept formattata con tutti i dettagli dell'entry
@@ -168,6 +179,7 @@ def get_poc_string(entry):
         f"Scan Name: {scan_name}\n"
         f"Scan Target: {scan_target}"
     )
+
 # Route name and tools description
 route_name = "spiderfootScan"
 tools_description = [
@@ -239,6 +251,8 @@ def process_request(
                 event_content_set = set(flat_events)
             
             listOfIP=[]
+            listOfCredential=[]
+            listOfNumber = []
             for entry in json_content:
                 event_type = entry['event_type']
                 #controllo se l'evento è valido
@@ -253,20 +267,93 @@ def process_request(
                 ip_obj = None 
                 port = None 
                 try:
-                    if event_type == "IP_ADDRESS":
+                    if event_type == "IP_ADDRESS" or event_type == "AFFILIATE_IPADDR":
                         ip_obj,port = split_ip_port(entry['data'])
                         host=entry['source_data']
                     else:
                         ip_obj = socket.gethostbyname(entry['scan_target'])
                         port = None
-                    if event_type == "AFFILIATE_DOMAIN_WHOIS":
-                        data=split_data(entry['data'])
-                        print("Data: "+str(data))
+                        
+                    if event_type == "AFFILIATE_DOMAIN_WHOIS" or event_type == "DOMAIN_WHOIS" or event_type == "IPV6_ADDRESS":
+                        data = split_data(entry['data'])
+                        print("Data: "+str(data)) 
                         description.extend(data)
+                        
+                    elif event_type == "PHONE_NUMBER":
+                        credential = entry['data']
+                        source_data = entry['source_data']
+                        listOfNumber.extend(credential)
+                        
+                    elif event_type == "DOMAIN_REGISTRAR":
+                        description.extend(entry['data'])
+                    
                 except (ValueError, socket.gaierror) as e:
                     logging.error(f"IP error: {str(e)}")
                     continue
+                # Aggiungi questa sezione DOPO il blocco try-except esistente e PRIMA della gestione degli IP
+                
 
+                if event_type in ["DOMAIN_NAME", "AFFILIATE_DOMAIN_NAME", "INTERNET_NAME"]:
+                    # Gestione domini principali
+                    host = entry['data']
+                    description.append(f"Domain identified: {host}")
+
+                elif "WHOIS" in event_type:
+                    # Gestione informazioni WHOIS
+                    whois_data = split_data(entry['data'])
+                    description.extend(["WHOIS Information:", *whois_data])
+
+                elif event_type.startswith("VULNERABILITY_"):
+                    # Gestione vulnerabilità
+                    cve_id = entry['data'].split("_")[-1]
+                    description.append(f"CVE ID: {cve_id}")
+                    cvss_score = 7.0 if "CRITICAL" in event_type else 6.0  # Esempio
+                    issue_type = "vulnerability"
+
+                elif event_type in ["EMAILADDR", "EMAILADDR_COMPROMISED"]:
+                    # Gestione email
+                    email = entry['data']
+                    listOfCredential.append(f"Email: {email}")
+                    description.append(f"Related email: {email}")
+
+                elif event_type == "SOCIAL_MEDIA":
+                    # Gestione social media
+                    profile_url = entry['data']
+                    description.append(f"Social Media Profile: {profile_url}")
+
+                elif event_type == "WEB_ANALYTICS_ID":
+                    # Gestione analytics
+                    analytics_id = entry['data']
+                    description.append(f"Tracking ID: {analytics_id}")
+
+                elif event_type == "RAW_FILE_META_DATA":
+                    # Gestione metadati file
+                    meta_data = json.loads(entry['data'])
+                    description.append("File Metadata:")
+                    description.extend([f"{k}: {v}" for k,v in meta_data.items()])
+
+                elif event_type == "SSL_CERTIFICATE_RAW":
+                    # Gestione certificati SSL
+                    cert_info = json.loads(entry['data'])
+                    description.append("SSL Certificate Details:")
+                    description.extend([f"{k}: {v}" for k,v in cert_info.items()])
+
+                elif event_type in ["CREDIT_CARD_NUMBER", "IBAN_NUMBER"]:
+                    # Gestione dati finanziari
+                    financial_data = entry['data']
+                    listOfCredential.append(f"Financial Data Found: {financial_data}")
+                    description.append("Sensitive Financial Information Detected")
+
+                elif event_type == "OPERATING_SYSTEM":
+                    # Aggiornamento OS host
+                    os_info = entry['data']
+                    db.update_host_os(host_id, os_info)
+
+                elif event_type == "TCP_PORT_OPEN":
+                    # Gestione porte aggiuntive
+                    port_number = entry['data'].split("_")[0]
+                    service_info = entry.get('module', 'Unknown Service')
+                    description.append(f"Discovered Open Port: {port_number} ({service_info})")
                 if ip_obj not in listOfIP:
                     listOfIP.append(ip_obj)
                     print(f"IP: {ip_obj}")
@@ -334,7 +421,7 @@ def process_request(
                 project_id = current_project['id']
                 '''-----------------------------------------------------------------'''
                 module = entry['module']
-                name = f"{module} - SpiderfootScan"
+                name = f"{module} - {event_type} - spiderfootScan"
                 source_data = entry['source_data']
                 poc_string = get_poc_string(entry)
                 
@@ -371,7 +458,7 @@ def process_request(
                         name=name,
                         description="\n".join(description),
                         url_path="",
-                        cvss=0,
+                        cvss=cvss_score if event_type.startswith("VULNERABILITY") else 0,
                         user_id=user_id,
                         services=services,
                         status='Need to check',
@@ -387,9 +474,21 @@ def process_request(
                 poc = str(poc_string)
                 dati = poc.encode('utf-8')
                 pocs=db.select_issue_pocs(issue_id)
-                db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
+                if pocs:
+                    # Se esiste già un PoC per l'issue, aggiorna il PoC esistente
+                    poc_dati = pocs[0]['base64']  # è una stringa base64
+                    decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
+
+                    if decoded_poc != poc:
+                        db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
+                                  poc_id='random', storage='database', data=dati)
+                else:
+                    db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
                                   poc_id='random', storage='database', data=dati)
                 
+                
+                note_str="\n".join(listOfCredential)
+                #db.insert_new_note()
             print(listOfIP)
         except Exception as e:
             logging.error(e)
