@@ -16,6 +16,7 @@ import socket
 import json
 import os
 import base64
+import re
 
 class Config:
     """Configurazione percorsi risorse plugin"""
@@ -115,7 +116,6 @@ def update_services_dict(port_id, hostname_id, old_services):
 
     # Crea entry per la porta se non esiste
     if port_key not in old_services:
-        print(f"Creazione di nuova entry per la porta : {port_key}")
         old_services[port_key] = ["0"]  # Inizializza con elemento "0"
 
     # Estrae gli UUID esistenti per la porta corrente (escludendo lo "0")
@@ -123,11 +123,7 @@ def update_services_dict(port_id, hostname_id, old_services):
 
     # Controlla se l'hostname_id è già presente
     if host_id not in existing_uuids:
-        print(f"Aggiunta nuovo hostname {host_id} alla porta {port_key}")
         old_services[port_key].append(host_id)
-    else:
-        print(f"Hostname {host_id} già presente per la porta {port_key}")
-
     return old_services
 def split_data(data: str) -> list:
     """
@@ -169,16 +165,72 @@ def get_poc_string(entry):
     scan_name = entry['scan_name']
     scan_target = entry['scan_target']
     
-    return (
-        f"Module: {module}\n"
-        f"Data: {data}\n"
-        f"Event Type: {event_type}\n"
-        f"Source Data: {source_data}\n"
-        f"False Positive: {false_positive}\n"
-        f"Last Seen: {last_seen}\n"
-        f"Scan Name: {scan_name}\n"
-        f"Scan Target: {scan_target}"
-    )
+    poc_string= []
+    if data: poc_string.append(f"Data: {data}")
+    if event_type: poc_string.append(f"Event Type: {event_type}")
+    if module: poc_string.append(f"Module: {module}")
+    if source_data: poc_string.append(f"Source Data: {source_data}")
+    if false_positive: poc_string.append(f"False Positive: {false_positive}")
+    if last_seen: poc_string.append(f"Last Seen: {last_seen}")
+    if scan_name: poc_string.append(f"Scan Name: {scan_name}")
+    if scan_target: poc_string.append(f"Scan Target: {scan_target}")
+    poc_string.append("-"*40)
+    poc_string = "\n".join(poc_string)
+    return poc_string
+def is_event_in_subcategory(event: str, subcategory: str, categories: dict) -> bool:
+    """
+    Controlla se l'evento 'event' è presente nella sottocategoria 'subcategory'
+    all'interno del dizionario 'categories'.
+    
+    Args:
+        event (str): il nome dell'evento da cercare.
+        subcategory (str): la chiave della sottocategoria da controllare (es. "dns", "domain", ecc.).
+        categories (dict): dizionario con le sottocategorie ed i loro eventi.
+        
+    Returns:
+        bool: True se l'evento è presente nella sottocategoria, False altrimenti.
+    """
+    # Recupera la lista degli eventi per la sottocategoria data
+    events_list = categories.get(subcategory)
+    
+    # Se la sottocategoria esiste e l'evento è al suo interno, ritorna True
+    return events_list is not None and event in events_list
+def add_newline_for_capitalized(data):
+    # Trova fino a 4 parole con la maiuscola iniziale seguite da ":"
+    def add_newline(match):
+        return '\n' + match.group(0)
+    
+    # Regex per cercare fino a 4 parole con la maiuscola iniziale seguite da ":"
+    modified_data = re.sub(r'(\b[A-Z][a-zA-Z]*\b)(?:\s+\b[A-Z][a-zA-Z]*\b){0,3}:', add_newline, data)
+    
+    return modified_data
+def clean_string(text):
+    # Rimuovi parentesi quadre, virgolette, apici e altri caratteri inutili, va a capo con "IN MX", "IN NS", "IN TXT", "+" e stringhe tipo "Registrant Postal Code:"(fino a 4 parole, vedi add_newline_for_capitalized)
+    cleaned = text.replace('[', '').replace(']', '').replace('"', '').replace("'", "").replace("\n", "").replace("\n", "").replace("\\n", "").replace("IN MX", " \n ").replace("IN NS", " \n ").replace("IN TXT", " \n ").replace("Data:","\nData:").replace("+","\n+")
+    cleaned = add_newline_for_capitalized(cleaned)
+    
+    # Rimuovi eventuali spazi extra alla fine della stringa
+    #cleaned = cleaned.strip()
+    return cleaned
+def format_event_data(event_data):
+    if type(event_data) == list:
+        event_data = ' '.join(event_data)  # Unisce gli elementi della lista in una stringa
+    
+    events = event_data.split("Event type:")
+    
+    formatted_data = ""
+    
+    for event in events:
+        if event.strip():  # Se non è una stringa vuota
+            event_lines = event.strip().split('\n')
+            event_type = event_lines[0].strip()
+            event_info = "\n".join([line.strip() for line in event_lines[1:] if line.strip()])
+            formatted_data += f"Event Type: {event_type}\n"
+            formatted_data += f"\n{clean_string(event_info)}\n\n"
+            formatted_data += "-" * 40 + "\n\n"
+
+    
+    return formatted_data.strip()
 
 # Route name and tools description
 route_name = "spiderfootScan"
@@ -250,9 +302,25 @@ def process_request(
                         flat_events.extend(category)
                 event_content_set = set(flat_events)
             
-            listOfIP=[]
-            listOfCredential=[]
-            listOfNumber = []
+            dns = []
+            domain = []  
+            ip = []  
+            infrastructure = []  
+            whois = []
+            cloud = []
+            provider = []
+            accounts = []
+            employees = []
+            webEnum = []
+            web = []
+            certificates = []
+            services = []
+            vulnerability = []
+            other = []
+            domainOther = []
+            blockchain = []
+            name = ""
+
             for entry in json_content:
                 event_type = entry['event_type']
                 #controllo se l'evento è valido
@@ -260,113 +328,137 @@ def process_request(
                     logging.warning(f"Event type {event_type} not in event_content")
                     continue
                 description = []
-                last_seen = entry['last_seen']
-                print(f"Last seen: {last_seen}")
-                description.append(f"Type of event: {event_type}\n" + f"Last_seen: {last_seen}\n" )
-                host=None
+                host = entry['scan_target']
                 ip_obj = None 
                 port = None 
-                try:
-                    if event_type == "IP_ADDRESS" or event_type == "AFFILIATE_IPADDR":
-                        ip_obj,port = split_ip_port(entry['data'])
-                        host=entry['source_data']
-                    else:
-                        ip_obj = socket.gethostbyname(entry['scan_target'])
-                        port = None
-                        
-                    if event_type == "AFFILIATE_DOMAIN_WHOIS" or event_type == "DOMAIN_WHOIS" or event_type == "IPV6_ADDRESS":
-                        data = split_data(entry['data'])
-                        print("Data: "+str(data)) 
-                        description.extend(data)
-                        
-                    elif event_type == "PHONE_NUMBER":
-                        credential = entry['data']
-                        source_data = entry['source_data']
-                        listOfNumber.extend(credential)
-                        
-                    elif event_type == "DOMAIN_REGISTRAR":
-                        description.extend(entry['data'])
-                    
-                except (ValueError, socket.gaierror) as e:
-                    logging.error(f"IP error: {str(e)}")
-                    continue
-                # Aggiungi questa sezione DOPO il blocco try-except esistente e PRIMA della gestione degli IP
+                note = [] 
                 
+                if name == "":
+                    name = f"{event_type} "
+                
+                try:
+                    if is_event_in_subcategory(event_type, "dns", event_structure):
+                        if not dns:
+                            dns.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        dns.append(f"{data}")
+                    elif is_event_in_subcategory(event_type, "domain", event_structure):
+                        if not domain:
+                            domain.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        domain.append(f"{data}")
 
-                if event_type in ["DOMAIN_NAME", "AFFILIATE_DOMAIN_NAME", "INTERNET_NAME"]:
-                    # Gestione domini principali
-                    host = entry['data']
-                    description.append(f"Domain identified: {host}")
+                    elif is_event_in_subcategory(event_type, "ip", event_structure):
+                        if not ip:
+                            ip.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        ip.append(f"{data}")
 
-                elif "WHOIS" in event_type:
-                    # Gestione informazioni WHOIS
-                    whois_data = split_data(entry['data'])
-                    description.extend(["WHOIS Information:", *whois_data])
+                    elif is_event_in_subcategory(event_type, "infrastructure", event_structure):
+                        if not infrastructure:
+                            infrastructure.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        infrastructure.append(f"{data}")
 
-                elif event_type.startswith("VULNERABILITY_"):
-                    # Gestione vulnerabilità
-                    cve_id = entry['data'].split("_")[-1]
-                    description.append(f"CVE ID: {cve_id}")
-                    cvss_score = 7.0 if "CRITICAL" in event_type else 6.0  # Esempio
-                    issue_type = "vulnerability"
+                    elif is_event_in_subcategory(event_type, "whois", event_structure):
+                        if not whois:
+                            whois.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        whois.append(f"{data}")
 
-                elif event_type in ["EMAILADDR", "EMAILADDR_COMPROMISED"]:
-                    # Gestione email
-                    email = entry['data']
-                    listOfCredential.append(f"Email: {email}")
-                    description.append(f"Related email: {email}")
+                    elif is_event_in_subcategory(event_type, "cloud", event_structure):
+                        if not cloud:
+                            cloud.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        cloud.append(f"{data}")
 
-                elif event_type == "SOCIAL_MEDIA":
-                    # Gestione social media
-                    profile_url = entry['data']
-                    description.append(f"Social Media Profile: {profile_url}")
+                    elif is_event_in_subcategory(event_type, "provider", event_structure):
+                        if not provider:
+                            provider.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        provider.append(f"{data}")
 
-                elif event_type == "WEB_ANALYTICS_ID":
-                    # Gestione analytics
-                    analytics_id = entry['data']
-                    description.append(f"Tracking ID: {analytics_id}")
+                    elif is_event_in_subcategory(event_type, "accounts", event_structure):
+                        if not accounts:
+                            accounts.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        accounts.append(f"{data}")
 
-                elif event_type == "RAW_FILE_META_DATA":
-                    # Gestione metadati file
-                    meta_data = json.loads(entry['data'])
-                    description.append("File Metadata:")
-                    description.extend([f"{k}: {v}" for k,v in meta_data.items()])
+                    elif is_event_in_subcategory(event_type, "employees", event_structure):
+                        if not employees:
+                            employees.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        employees.append(f"{data}")
 
-                elif event_type == "SSL_CERTIFICATE_RAW":
-                    # Gestione certificati SSL
-                    cert_info = json.loads(entry['data'])
-                    description.append("SSL Certificate Details:")
-                    description.extend([f"{k}: {v}" for k,v in cert_info.items()])
+                    elif is_event_in_subcategory(event_type, "webEnum", event_structure):
+                        if not webEnum:
+                            webEnum.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        webEnum.append(f"{data}")
 
-                elif event_type in ["CREDIT_CARD_NUMBER", "IBAN_NUMBER"]:
-                    # Gestione dati finanziari
-                    financial_data = entry['data']
-                    listOfCredential.append(f"Financial Data Found: {financial_data}")
-                    description.append("Sensitive Financial Information Detected")
+                    elif is_event_in_subcategory(event_type, "web", event_structure):
+                        if not web:
+                            web.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        web.append(f"{data}")
 
-                elif event_type == "OPERATING_SYSTEM":
-                    # Aggiornamento OS host
-                    os_info = entry['data']
-                    db.update_host_os(host_id, os_info)
+                    elif is_event_in_subcategory(event_type, "certificates", event_structure):
+                        if not certificates:
+                            certificates.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        certificates.append(f"{data}")
 
-                elif event_type == "TCP_PORT_OPEN":
-                    # Gestione porte aggiuntive
-                    port_number = entry['data'].split("_")[0]
-                    service_info = entry.get('module', 'Unknown Service')
-                    description.append(f"Discovered Open Port: {port_number} ({service_info})")
-                if ip_obj not in listOfIP:
-                    listOfIP.append(ip_obj)
-                    print(f"IP: {ip_obj}")
+                    elif is_event_in_subcategory(event_type, "services", event_structure):
+                        if not services:
+                            services.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        services.append(f"{data}")
+
+                    elif is_event_in_subcategory(event_type, "vulnerability", event_structure):
+                        if not vulnerability:
+                            vulnerability.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        vulnerability.append(f"{data}")
+
+                    elif is_event_in_subcategory(event_type, "other", event_structure):
+                        if not other:
+                            other.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        other.append(f"{data}")
+
+                    elif is_event_in_subcategory(event_type, "domainOther", event_structure):
+                        if not domainOther:
+                            domainOther.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        domainOther.append(f"{data}")
+
+                    elif is_event_in_subcategory(event_type, "blockchain", event_structure):
+                        if not blockchain:
+                            blockchain.append(f"Event type: {event_type}")
+                        data = split_data(entry['data'])
+                        blockchain.append(f"{data}")
+
+                        
+                except Exception as e:
+                    logging.error(f"Error: {str(e)}")
+                    continue
+
+                # Aggrega tutte le liste in una sola lista
+                
+                ip_obj = socket.gethostbyname(host)
+
+                
                 
                 # Gestione porta - Se non fornita da spiderfoot  
                 if port is None:
                     port = "0"
-                print("-----------------------------------------------")
+                '''-----------------------------------------------'''
                 current_host = db.select_project_host_by_ip(
                         project_id=current_project['id'],
                         ip=str(ip_obj)
                 )
                 #gestione host e hostname
+                
                 try:
                     if current_host:
                         current_host = current_host[0]
@@ -380,11 +472,9 @@ def process_request(
                             threats=[],
                             os=''
                         )
-                        print(f"Host: {host_id}")
                 except Exception as e:
                     logging.error(f"Errore nella selezione dell'host: {str(e)}")
                     return f"Errore nel recupero dell'host: {str(e)}"
-                print(f"Host: {host_id}")
                 
                 hostname_id = "0"
                 if host:
@@ -395,9 +485,8 @@ def process_request(
                         hostname_id = db.insert_hostname(host_id, host,
                                                         input_dict['hosts_description'],
                                                         current_user['id'])
-                print("--------------------------------------------------------")
+                '''--------------------------------------------------------'''
                 is_tcp = True
-                print("-" * 40)
                 existing_port = db.select_host_port(host_id, port, is_tcp)
                 if not existing_port:
                     db.insert_host_port(
@@ -413,18 +502,16 @@ def process_request(
 
                 
                 existing_port = db.select_host_port(host_id, port, is_tcp)
-                print(f"Porta: {existing_port}")
-                print("-" * 40)
+               
                 
                 port_id = existing_port[0]['id']
                 user_id = current_user['id']
                 project_id = current_project['id']
                 '''-----------------------------------------------------------------'''
                 module = entry['module']
-                name = f"{module} - {event_type} - spiderfootScan"
                 source_data = entry['source_data']
                 poc_string = get_poc_string(entry)
-                
+                '''
                 issue_names = {}
                 for issue in db.select_project_issues(project_id):
                     # Aggiungo solo se il nome non è già presente
@@ -458,7 +545,7 @@ def process_request(
                         name=name,
                         description="\n".join(description),
                         url_path="",
-                        cvss=cvss_score if event_type.startswith("VULNERABILITY") else 0,
+                        cvss=0,
                         user_id=user_id,
                         services=services,
                         status='Need to check',
@@ -486,10 +573,31 @@ def process_request(
                     db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
                                   poc_id='random', storage='database', data=dati)
                 
-                
-                note_str="\n".join(listOfCredential)
-                #db.insert_new_note()
-            print(listOfIP)
+                '''
+            print("dns: "+str(dns))
+            all_events = (dns+ domain + ip +infrastructure + whois + 
+                                cloud + provider + accounts+ employees + webEnum + web + 
+                                certificates + services + vulnerability + 
+                                other + domainOther + blockchain)
+
+            
+            # Unisci la lista in una stringa, ad esempio separando gli elementi con una nuova linea
+            if all_events:
+                aggregated_string = "\n".join(all_events)
+                print("project_id: "+str(current_project['id'])+ 
+                                         "\n","name: "+name+ "\n",
+                                         "user_id: "+str(current_user['id']) + "\n",
+                                         "host_id: "+str(host_id))
+                formatted_data = format_event_data(aggregated_string)
+                name += "- SpiderfootScan" 
+                db.insert_new_note(
+                    project_id=str(current_project['id']),
+                    name=name,
+                    user_id=str(current_user['id']),
+                    text=formatted_data,
+                    note_type='plaintext'
+                )
+            print("La stringa aggregata è: "+formatted_data)
         except Exception as e:
             logging.error(e)
             return 'One of files was corrupted!'
