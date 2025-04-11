@@ -231,7 +231,25 @@ def format_event_data(event_data):
 
     
     return formatted_data.strip()
+def get_cvss_score_from_event(event_name: str) -> float:
+    mapping = {
+        "VULNERABILITY_CVE_CRITICAL": 10.0,
+        "VULNERABILITY_CVE_HIGH": 8.0,
+        "VULNERABILITY_CVE_MEDIUM": 5.5,
+        "VULNERABILITY_CVE_LOW": 3.0,
+        "VULNERABILITY_GENERAL": 0.0,
+        "VULNERABILITY_CVE_THIRD_PARTY_DISCLOSURE": 0.0,
+        "VULNERABILITY_DISCLOSURE": 0.0
+    }
 
+    return mapping.get(event_name, 0.0)
+def flatten_and_stringify(x):
+    if isinstance(x, dict):
+        return [str(v) for v in x.values()]
+    elif isinstance(x, list):
+        return [str(v) for v in x]
+    else:
+        return [str(x)]
 # Route name and tools description
 route_name = "spiderfootScan"
 tools_description = [
@@ -301,7 +319,7 @@ def process_request(
                     except AttributeError:
                         flat_events.extend(category)
                 event_content_set = set(flat_events)
-            
+            vulnerability_events = event_structure.get("vulnerability", [])
             dns = []
             domain = []  
             ip = []  
@@ -332,7 +350,6 @@ def process_request(
                 ip_obj = None 
                 port = None 
                 note = [] 
-                
                 if name == "":
                     name = f"{event_type} "
                 
@@ -511,85 +528,81 @@ def process_request(
                 module = entry['module']
                 source_data = entry['source_data']
                 poc_string = get_poc_string(entry)
-                '''
-                issue_names = {}
-                for issue in db.select_project_issues(project_id):
-                    # Aggiungo solo se il nome non è già presente
-                    if issue['name'] not in issue_names:
-                        issue_names[issue['name']] = issue  #issue_names[name] contiene un dizionario con tutti i dati
-                if name in issue_names:
-                    issue_id = issue_names[name]['id']
-                    old_services = issue_names[name]['services']
-                    print("Old services in if: "+str(old_services))
-                    print(f"L'errore : {name} ; esiste già con ID: {issue_id}")
-                    print("*" * 40)
+                if event_type in vulnerability_events:
+                    print("event_type è presente: "+str(event_type))
+                    issue_names = {}
+                    for issue in db.select_project_issues(project_id):
+                        # Aggiungo solo se il nome non è già presente
+                        if issue['name'] not in issue_names:
+                            issue_names[issue['name']] = issue  #issue_names[name] contiene un dizionario con tutti i dati
+                    if name in issue_names:
+                        issue_id = issue_names[name]['id']
+                        old_services = issue_names[name]['services']
+                        print("Old services in if: "+str(old_services))
+                        print(f"L'errore : {name} ; esiste già con ID: {issue_id}")
+                        print("*" * 40)
 
-                    new_services = update_services_dict(
-                        port_id, 
-                        hostname_id,
-                        old_services
-                    )
-                    print("New services creati: "+str(new_services))
-                    # Aggiorna solo se ci sono modifiche
-                    if new_services != old_services:
-                        print("AGGIORNAMENTO SERVIZI")
-                        print("Update services: "+str(new_services))
-                        db.update_issue_services(issue_id, new_services)
-                        print("FINE AGGIORNAMENTO SERVIZI")
-                    print("*" * 40)
-                    
-                else:
-                    services = create_services_dict(port_id, hostname_id)
-                    #print(services)
-                    issue_id = db.insert_new_issue_no_dublicate(
-                        name=name,
-                        description="\n".join(description),
-                        url_path="",
-                        cvss=0,
-                        user_id=user_id,
-                        services=services,
-                        status='Need to check',
-                        project_id=project_id,
-                        cwe=0,
-                        issue_type='custom',
-                        fix="",
-                        technical="technical",
-                        risks="",
-                        references=source_data
+                        new_services = update_services_dict(
+                            port_id, 
+                            hostname_id,
+                            old_services
                         )
-                
-                poc = str(poc_string)
-                dati = poc.encode('utf-8')
-                pocs=db.select_issue_pocs(issue_id)
-                if pocs:
-                    # Se esiste già un PoC per l'issue, aggiorna il PoC esistente
-                    poc_dati = pocs[0]['base64']  # è una stringa base64
-                    decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
-
-                    if decoded_poc != poc:
+                        print("New services creati: "+str(new_services))
+                        # Aggiorna solo se ci sono modifiche
+                        if new_services != old_services:
+                            print("AGGIORNAMENTO SERVIZI")
+                            print("Update services: "+str(new_services))
+                            db.update_issue_services(issue_id, new_services)
+                            print("FINE AGGIORNAMENTO SERVIZI")
+                        print("*" * 40)
+                        
+                    else:
+                        services = create_services_dict(port_id, hostname_id)
+                        #print(services)
+                        issue_id = db.insert_new_issue_no_dublicate(
+                            name=name,
+                            description="\n".join(description),
+                            url_path="",
+                            cvss=get_cvss_score_from_event(event_type),
+                            user_id=user_id,
+                            services=services,
+                            status='Need to check',
+                            project_id=project_id,
+                            cwe=0,
+                            issue_type='custom',
+                            fix="",
+                            technical="technical",
+                            risks="",
+                            references=source_data
+                            )
+                    
+                    poc = str(poc_string)
+                    dati = poc.encode('utf-8')
+                    pocs=db.select_issue_pocs(issue_id)
+                    
+                    if pocs:
+                        # Se esiste già un PoC per l'issue, aggiorna il PoC esistente
+                        poc_dati = pocs[0]['base64']  # è una stringa base64
+                        decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
+                        print("no errors")
+                        if decoded_poc != poc:
+                            db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
+                                    poc_id='random', storage='database', data=dati)
+                    else:
                         db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
-                                  poc_id='random', storage='database', data=dati)
-                else:
-                    db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
-                                  poc_id='random', storage='database', data=dati)
-                
-                '''
-            print("dns: "+str(dns))
-            all_events = (dns+ domain + ip +infrastructure + whois + 
-                                cloud + provider + accounts+ employees + webEnum + web + 
-                                certificates + services + vulnerability + 
-                                other + domainOther + blockchain)
-
-            
-            # Unisci la lista in una stringa, ad esempio separando gli elementi con una nuova linea
+                                    poc_id='random', storage='database', data=dati)
+                    
+            all_events = (str(dns) + str(domain) + str(ip) + str(infrastructure) + str(whois) +
+                    str(cloud) + str(provider) + str(accounts) + str(employees) + str(webEnum) + str(web) +
+                    str(certificates) + str(services) + str(vulnerability) +
+                    str(other) + str(domainOther) + str(blockchain)
+                )
             if all_events:
                 aggregated_string = "\n".join(all_events)
-                print("project_id: "+str(current_project['id'])+ 
-                                         "\n","name: "+name+ "\n",
-                                         "user_id: "+str(current_user['id']) + "\n",
-                                         "host_id: "+str(host_id))
+                
                 formatted_data = format_event_data(aggregated_string)
                 name += "- SpiderfootScan" 
+                #aggiungere il controllo per vedere se esiste già la nota
                 db.insert_new_note(
                     project_id=str(current_project['id']),
                     name=name,
@@ -597,7 +610,7 @@ def process_request(
                     text=formatted_data,
                     note_type='plaintext'
                 )
-            print("La stringa aggregata è: "+formatted_data)
+            #print("La stringa aggregata è: "+formatted_data)
         except Exception as e:
             logging.error(e)
             return 'One of files was corrupted!'
