@@ -5,5 +5,5 @@ Questo plugin importa i risultati delle scansioni SpiderFoot (formato JSON), org
 servizi, vulnerabilità e note. Elabora automaticamente vari tipi di eventi come record DNS, informazioni IP, dati WHOIS e vulnerabilità.
 
 ## File per gestione eventi
--scanner.py: da inserire nella repo di Spiderfoot nella cartella dei moduli -> spiderfoot/modules
--checkEvents.py: controlla se sono presenti tutti gli eventi in nel file *.json confrontadolo con un csv
+1. scanner.py: da inserire nella repo di Spiderfoot nella cartella dei moduli -> `spiderfoot/modules`
+2. checkEvents.py: controlla se sono presenti tutti gli eventi in nel file `*.json` confrontadolo con un csv
