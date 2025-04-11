@@ -16,7 +16,6 @@ import socket
 import json
 import os
 import base64
-import re
 
 class Config:
     """Configurazione percorsi risorse plugin"""
