@@ -145,7 +145,6 @@ def split_data(data: str) -> list:
             cleaned_lines.append(line)
 
     return cleaned_lines
-
 def get_poc_string(entry):
     """
     Genera una stringa di Proof of Concept formattata con tutti i dettagli dell'entry
@@ -209,10 +208,14 @@ def clean_string(text):
     cleaned = text.replace('[', '').replace(']', '').replace('"', '').replace("'", "").replace("\n", "").replace("\n", "").replace("\\n", "").replace("IN MX", " \n ").replace("IN NS", " \n ").replace("IN TXT", " \n ").replace("Data:","\nData:").replace("+","\n+")
     cleaned = add_newline_for_capitalized(cleaned)
     
-    # Rimuovi eventuali spazi extra alla fine della stringa
+    # Rimuove eventuali spazi extra alla fine della stringa
     #cleaned = cleaned.strip()
     return cleaned
 def format_event_data(event_data):
+    """
+    Formatta i dati degli eventi in una stringa leggibile.
+    """
+    event_data = clean_string(event_data)
     if type(event_data) == list:
         event_data = ' '.join(event_data)  # Unisce gli elementi della lista in una stringa
     
@@ -243,13 +246,7 @@ def get_cvss_score_from_event(event_name: str) -> float:
     }
 
     return mapping.get(event_name, 0.0)
-def flatten_and_stringify(x):
-    if isinstance(x, dict):
-        return [str(v) for v in x.values()]
-    elif isinstance(x, list):
-        return [str(v) for v in x]
-    else:
-        return [str(x)]
+
 # Route name and tools description
 route_name = "spiderfootScan"
 tools_description = [
@@ -529,7 +526,6 @@ def process_request(
                 source_data = entry['source_data']
                 poc_string = get_poc_string(entry)
                 if event_type in vulnerability_events:
-                    print("event_type è presente: "+str(event_type))
                     issue_names = {}
                     for issue in db.select_project_issues(project_id):
                         # Aggiungo solo se il nome non è già presente
@@ -538,27 +534,17 @@ def process_request(
                     if name in issue_names:
                         issue_id = issue_names[name]['id']
                         old_services = issue_names[name]['services']
-                        print("Old services in if: "+str(old_services))
-                        print(f"L'errore : {name} ; esiste già con ID: {issue_id}")
-                        print("*" * 40)
 
                         new_services = update_services_dict(
                             port_id, 
                             hostname_id,
                             old_services
                         )
-                        print("New services creati: "+str(new_services))
                         # Aggiorna solo se ci sono modifiche
                         if new_services != old_services:
-                            print("AGGIORNAMENTO SERVIZI")
-                            print("Update services: "+str(new_services))
-                            db.update_issue_services(issue_id, new_services)
-                            print("FINE AGGIORNAMENTO SERVIZI")
-                        print("*" * 40)
-                        
+                            db.update_issue_services(issue_id, new_services)                        
                     else:
                         services = create_services_dict(port_id, hostname_id)
-                        #print(services)
                         issue_id = db.insert_new_issue_no_dublicate(
                             name=name,
                             description="\n".join(description),
@@ -584,7 +570,6 @@ def process_request(
                         # Se esiste già un PoC per l'issue, aggiorna il PoC esistente
                         poc_dati = pocs[0]['base64']  # è una stringa base64
                         decoded_poc = base64.b64decode(poc_dati).decode("utf-8")
-                        print("no errors")
                         if decoded_poc != poc:
                             db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
                                     poc_id='random', storage='database', data=dati)
@@ -592,15 +577,15 @@ def process_request(
                         db.insert_new_poc(port_id, "Descrizione","txt", "poc.txt", issue_id, user_id, hostname_id, 
                                     poc_id='random', storage='database', data=dati)
                     
-            all_events = (str(dns) + str(domain) + str(ip) + str(infrastructure) + str(whois) +
+            all_events_str = (str(dns) + str(domain) + str(ip) + str(infrastructure) + str(whois) +
                     str(cloud) + str(provider) + str(accounts) + str(employees) + str(webEnum) + str(web) +
                     str(certificates) + str(services) + str(vulnerability) +
                     str(other) + str(domainOther) + str(blockchain)
                 )
-            if all_events:
-                aggregated_string = "\n".join(all_events)
+            if all_events_str:
+                #aggregated_string = "\n".join(all_events_str)
                 
-                formatted_data = format_event_data(aggregated_string)
+                formatted_data = format_event_data(all_events_str)
                 name += "- SpiderfootScan" 
                 #aggiungere il controllo per vedere se esiste già la nota
                 db.insert_new_note(
@@ -610,7 +595,6 @@ def process_request(
                     text=formatted_data,
                     note_type='plaintext'
                 )
-            #print("La stringa aggregata è: "+formatted_data)
         except Exception as e:
             logging.error(e)
             return 'One of files was corrupted!'
